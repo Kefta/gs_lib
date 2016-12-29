@@ -29,10 +29,7 @@ function code_gs.SafeInclude(sPath, bNoError --[[= false]])
 		ErrorNoHalt(string.format(sIncludeError, sPath, tArgs[2]))
 	end
 	
-	tArgs[1] = nil
-	tArgs[2] = nil
-	
-	return tArgs -- Empty table
+	return false
 end
 
 function code_gs.SafeRequire(sName, bNoError --[[= false]])
@@ -47,6 +44,105 @@ function code_gs.SafeRequire(sName, bNoError --[[= false]])
 	end
 	
 	return false
+end
+
+function code_gs.SafeCompile(sPath, bNoError --[[= false]])
+	local bSuccess, Ret = pcall(CompileFile, sPath)
+	
+	if (bSuccess) then
+		return Ret
+	end
+	
+	if (not bNoError) then
+		ErrorNoHalt(string.format(sIncludeError, sPath, Ret))
+	end
+	
+	return false
+end
+
+local sAddonPath = debug.getinfo(1, "S").source
+
+function code_gs.EnvironmentCompile(sPath, bNoError)
+	if (sPath:sub(-4) == ".lua") then
+		local func
+		local iLevel = 2
+		local sActualPath = debug.getinfo(iLevel, "S").source
+		
+		while (sActualPath == sAddonPath) do
+			iLevel = iLevel + 1
+			sActualPath = debug.getinfo(iLevel, "S").source
+		end
+		
+		if (sPath:find('/', 1, true)) then -- Path specified
+			func = code_gs.SafeCompile(sPath, bNoError)
+		else -- include("shared.lua")
+			local iEndPos = #sActualPath
+			assert(iEndPos > 5) -- Should never happen
+			
+			while (not (sActualPath[iEndPos] == '/' or iEndPos == 5)) do-- Find the file path
+				iEndPos = iEndPos - 1
+			end
+			
+			local _, iStart
+			
+			if (sActualPath:sub(1, 5) == "@lua/") then
+				iStart = 5
+			else
+				_, iStart = sActualPath:find("/lua/", 3, true)
+			end
+			
+			func = code_gs.SafeCompile(sActualPath:sub(iStart + 1, iEndPos) .. sPath, bNoError)
+		end
+		
+		debug.setfenv(func, getfenv(iLevel))
+		
+		return func
+	end
+	
+	error("Non-lua file \"" .. sPath .. "\" cannot be compiled!")
+end
+
+function code_gs.EnvironmentInclude(sPath, bNoError)
+	local func = code_gs.EnvironmentCompile(sPath, bNoError)
+	
+	if (func) then
+		return func()
+	end
+end
+
+function code_gs.EnvironmentAddCSLuaFile(sPath)
+	if (sPath:sub(-4) == ".lua") then
+		if (sPath:find('/', 1, true)) then -- Path specified
+			AddCSLuaFile(sPath)
+		else -- AddCSLuaFile("shared.lua")
+			local iLevel = 2
+			local sActualPath = debug.getinfo(iLevel, "S").source
+			
+			while (sActualPath == sAddonPath) do
+				iLevel = iLevel + 1
+				sActualPath = debug.getinfo(iLevel, "S").source
+			end
+			
+			local iEndPos = #sActualPath
+			assert(iEndPos > 5) -- Should never happen
+			
+			while (not (sActualPath[iEndPos] == '/' or iEndPos == 5)) do-- Find the file path
+				iEndPos = iEndPos - 1
+			end
+			
+			local _, iStart
+			
+			if (sActualPath:sub(1, 5) == "@lua/") then
+				iStart = 5
+			else
+				_, iStart = sActualPath:find("/lua/", 3, true)
+			end
+			
+			AddCSLuaFile(sActualPath:sub(iStart + 1, iEndPos) .. sPath)
+		end
+	else
+		error("Non-lua file \"" .. sPath .. "\" cannot be AddCSLuaFile'd!")
+	end
 end
 
 function code_gs.IncludeDirectory(sFolder, bRecursive)
@@ -101,7 +197,7 @@ function code_gs.LoadAddon(sName, bLoadLanguage)
 		return {}
 	end
 	
-	local flTime = UnPredictedCurTime()
+	local flTime = CurTime()
 	
 	-- Don't load the file more than once in autorun
 	if (tLoadedAddons[sName] == flTime) then
@@ -150,7 +246,7 @@ function code_gs.LoadAddon(sName, bLoadLanguage)
 		return tRet
 	end
 	
-	local sLangFormat = "code_gs/lang/" .. sName .. "_%s.lua"
+	local sLangFormat = "code_gs/" .. sName .. "/lang/%s.lua"
 	tFiles = file.Find(string.format(sLangFormat, '*'), "LUA")
 	iFileLen = #tFiles
 	
@@ -161,26 +257,48 @@ function code_gs.LoadAddon(sName, bLoadLanguage)
 	
 	if (SERVER) then
 		for i = 1, iFileLen do
-			AddCSLuaFile("code_gs/lang/" .. tFiles[i])
+			AddCSLuaFile("code_gs/" .. sName .. "/lang/" .. tFiles[i])
 		end
 	end
 	
 	local sDefaultPath = string.format(sLangFormat, "en")
-	local sLangPath = string.format(sLangFormat, gmod_language:GetString():lower())
+	local sLangPath = string.format(sLangFormat, gmod_language:GetString():sub(-2):lower())
 	
 	-- English not found; select a new default
 	if (not file.Exists(sDefaultPath, "LUA")) then
 		sDefaultPath = string.format(sLangFormat, tFiles[1])
 	end
 	
+	local fLanguage = code_gs.SafeCompile(sDefaultPath)
+	
+	if (not fLanguage) then
+		return tRet or {}
+	end
+	
+	local tDefault = {}
+	debug.setfenv(fLanguage, tDefault)
+	fLanguage()
+	
 	if (file.Exists(sLangPath, "LUA")) then
-		local tTranslation = code_gs.SafeInclude(sLangPath)
+		local fTranslation = code_gs.SafeCompile(sLangPath)
 		
-		for key, str in pairs(code_gs.SafeInclude(sDefaultPath)) do
+		if (not fTranslation) then
+			return tRet or {}
+		end
+		
+		local tTranslation = {}
+		debug.setfenv(fTranslation, tTranslation) 
+		fTranslation()
+		
+		local sName = sName .. "_"
+		
+		for key, str in pairs(tDefault) do
 			tLang[sName .. key] = tTranslation[key] or str
 		end
 	else
-		for key, str in pairs(code_gs.SafeInclude(sDefaultPath)) do
+		local sName = sName .. "_"
+		
+		for key, str in pairs(tDefault) do
 			tLang[sName .. key] = str
 		end
 	end
@@ -189,19 +307,31 @@ function code_gs.LoadAddon(sName, bLoadLanguage)
 		sNewLang = sPath .. sNewLang:lower() .. ".lua"
 		
 		if (file.Exists(sNewLang, "LUA")) then
-			local tTranslation = code_gs.SafeInclude(sNewLang)
+			local fTranslation = code_gs.SafeCompile(sLangPath)
+			
+			if (not fTranslation) then
+				return tRet or {}
+			end
+			
+			local tTranslation = {}
+			debug.setfenv(fTranslation, tTranslation) 
+			fTranslation()
+			
+			local sName = sName .. "_"
 			
 			-- Fill in any non-translated phrases with default ones
-			for key, str in pairs(code_gs.SafeInclude(sDefaultPath)) do
+			for key, str in pairs(tDefault) do
 				key = key:lower()
 				tLang[sName .. key] = tTranslation[key] or str
 			end
 		else
-			for key, str in pairs(code_gs.SafeInclude(sDefaultPath)) do
+			local sName = sName .. "_"
+			
+			for key, str in pairs(tDefault) do
 				tLang[sName .. key:lower()] = str
 			end
 		end
-	end, "GS-" .. sName[1]:upper() .. string.sub(2, #sName))
+	end, "GS-" .. sName)
 	
 	return tRet or {}
 end
@@ -211,5 +341,5 @@ function code_gs.AddonLoaded(sName)
 end
 
 function code_gs.GetPhrase(sKey)
-	return tLang[sKey] or ""
+	return tLang[sKey] or sKey
 end

@@ -1,3 +1,5 @@
+local phys_pushscale = GetConVar("phys_pushscale")
+
 function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], Filter --[[= NULL]], iClassIgnore --[[= CLASS_NONE]])
 	local flSrcZ = vSrc.z
 	vSrc.z = flSrcZ + 1 // in case grenade is lying on the ground

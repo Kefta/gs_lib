@@ -736,7 +736,6 @@ function PLAYER:FireCSSBullets(bullets)
 					if (bit.band(util.PointContents(trSplash.HitPos), CONTENTS_SLIME) ~= 0) then
 						data:SetFlags(FX_WATER_IN_SLIME)
 					end
-					
 				util.Effect("gunshotsplash", data)
 			end
 			

@@ -87,3 +87,34 @@ function table.MergeSort(tbl, bReverse, sMember)
 	
 	return tbl
 end
+
+function table.InheritNoBaseClass(tbl, tBase)
+	for k, v in pairs(tBase) do
+		if (tbl[k] == nil) then
+			tbl[k] = v
+		elseif (istable(tbl[k]) && istable(v)) then
+			table.InheritNoBaseClass(tbl[k], v)
+		end
+	end
+end
+
+function table.DeepCopy(tbl)
+	local tCopy = {}
+	setmetatable(tCopy, debug.getmetatable(tbl))
+	
+	for k, v in pairs(tbl) do
+		if (istable(v)) then
+			tCopy[k] = table.DeepCopy(v)
+		elseif (isvector(v)) then
+			tCopy[k] = Vector(v)
+		elseif (isangle(v)) then
+			tCopy[k] = Angle(v)
+		--[[elseif (ismatrix(v)) then
+			tCopy[k] = Matrix(v)]]
+		else
+			tCopy[k] = v
+		end
+	end
+	
+	return tCopy
+end

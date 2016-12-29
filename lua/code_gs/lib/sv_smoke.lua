@@ -1,5 +1,8 @@
 local ENTITY = FindMetaTable("Entity")
 
+local vDefaultMax = Vector(50, 50, 50)
+local vDefaultMin = -vDefaultMax
+
 -- Create a wrapper for env_particlesmokegrenade since we are missing some engine methods
 local SMOKE = {
 	FillVolume = function(self, vMin --[[= vDefaultMin]], vMax --[[= vDefaultMax]])
