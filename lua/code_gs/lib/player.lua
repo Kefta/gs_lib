@@ -505,17 +505,6 @@ function PLAYER:FireLuaBullets(bullets)
 	self:LagCompensation(false)
 end
 
-function PLAYER:FireEntityBullets(tBullets, sClass)
-	if (SERVER) then
-		local pBullet = ents.Create(sClass or "gs_bullet")
-		
-		if (pBullet:IsValid()) then
-			pBullet:SetupBullet(tBullets)
-			pBullet:Spawn()
-		end
-	end
-end
-
 local tMaterialParameters = {
 	[MAT_METAL] = {
 		Penetration = 0.5,
