@@ -1,28 +1,28 @@
 FLT_EPSILON = 1.19209290e-07
 
 if (not code_gs.random) then
-	local Ret = code_gs.LoadAddon("minstd", false)
+	local Ret = code_gs.LoadAddon("code_gs/minstd", "minstd")
 	
 	if (not Ret) then
-		error("[GS] minstd random failed to load!")
+		error("[GS] MINSTD failed to load!")
 	end
 	
 	code_gs.random = unpack(Ret)
 end
-	
-function code_gs.random:SharedRandomFloat(pPlayer, sName, flMin, flMax, iAdditionalSeed)
+
+function code_gs.random:SharedRandomFloat(pPlayer, sName, flMin, flMax, iAdditionalSeed --[[= 0]])
 	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
 	
 	return self:RandomFloat(flMin, flMax)
 end
 
-function code_gs.random:SharedRandomInt(pPlayer, sName, iMin, iMax, iAdditionalSeed)
+function code_gs.random:SharedRandomInt(pPlayer, sName, iMin, iMax, iAdditionalSeed --[[= 0]])
 	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
 	
 	return self:RandomInt(iMin, iMax)
 end
 
-function code_gs.random:SharedRandomVector(pPlayer, sName, flMin, flMax, iAdditionalSeed)
+function code_gs.random:SharedRandomVector(pPlayer, sName, flMin, flMax, iAdditionalSeed --[[= 0]])
 	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
 
 	return Vector(self:RandomFloat(flMin, flMax), 
@@ -30,7 +30,7 @@ function code_gs.random:SharedRandomVector(pPlayer, sName, flMin, flMax, iAdditi
 			self:RandomFloat(flMin, flMax))
 end
 
-function code_gs.random:SharedRandomAngle(pPlayer, sName, flMin, flMax, iAdditionalSeed)
+function code_gs.random:SharedRandomAngle(pPlayer, sName, flMin, flMax, iAdditionalSeed --[[= 0]])
 	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
 
 	return Angle(self:RandomFloat(flMin, flMax), 
@@ -38,12 +38,12 @@ function code_gs.random:SharedRandomAngle(pPlayer, sName, flMin, flMax, iAdditio
 			self:RandomFloat(flMin, flMax))
 end
 
-function code_gs.random:SharedRandomColor(pPlayer, sName, flMin, flMax, iAdditionalSeed)
+function code_gs.random:SharedRandomColor(pPlayer, sName, iMin, iMax, iAdditionalSeed --[[= 0]])
 	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
 	
-	return Color(self:RandomFloat(flMin, flMax), 
-			self:RandomFloat(flMin, flMax), 
-			self:RandomFloat(flMin, flMax))
+	return Color(self:RandomInt(iMin, iMax), 
+			self:RandomInt(iMin, iMax), 
+			self:RandomInt(iMin, iMax))
 end
 
 local band = bit.band

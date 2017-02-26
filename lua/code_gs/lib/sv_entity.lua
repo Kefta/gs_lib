@@ -16,17 +16,19 @@ function ENTITY:GetAmoutVisible(vSrc)
 	return util.GetExplosionDamageAdjustment(vSrc, self:BodyTarget(vSrc), self)
 end
 
-function ENTITY:PhysicsCheckSweep(vAbsStart, vAbsDelta)
-	local iMask = MASK_SOLID -- FIXME: Support custom ent masks
+function ENTITY:PhysicsCheckSweep(vAbsStart, vAbsDelta, nMask --[[= MASK_SOLID]])
+	if (not nMask) then
+		nMask = MASK_SOLID
+	end
 	
 	// Set collision type
 	if (not self:IsSolid() or self:SolidFlagSet(FSOLID_VOLUME_CONTENTS)) then
-		if (self:GetMoveParent() ~= NULL) then
+		if (self:GetMoveParent():IsValid()) then
 			return util.ClearTrace()
 		end
 		
 		// don't collide with monsters
-		iMask = bit.band(iMask, bit.bnot(CONTENTS_MONSTER))
+		nMask = bit.band(nMask, bit.bnot(CONTENTS_MONSTER))
 	end
 	
 	return util.TraceEntity({
@@ -56,7 +58,7 @@ function ENTITY:_SetAbsVelocity(vAbsVelocity)
 		// m_vVelocity is only networked for the player, which is not manual mode
 		local pMoveParent = self:GetMoveParent()
 		
-		if (pMoveParent ~= NULL) then
+		if (pMoveParent:IsValid()) then
 			// First subtract out the parent's abs velocity to get a relative
 			// velocity measured in world space
 			// Transform relative velocity into parent space

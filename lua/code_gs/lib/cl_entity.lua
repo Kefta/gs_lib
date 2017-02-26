@@ -6,13 +6,15 @@ function ENTITY:SetDormant(bDormant)
 	
 	local pParent = self:GetParent()
 	
-	if (pParent ~= NULL) then
+	if (pParent:IsValid()) then
 		pParent:SetDormant(bDormant) -- Recursion
 	end
 end
 
-function ENTITY:PhysicsCheckSweep(vAbsStart, vAbsDelta)
-	local iMask = MASK_SOLID -- FIXME: Support custom ent masks
+function ENTITY:PhysicsCheckSweep(vAbsStart, vAbsDelta, iMask --[[= MASK_SOLID]])
+	if (not iMask) then
+		iMask = MASK_SOLID
+	end
 	
 	// Set collision type
 	if (not self:IsSolid() or self:SolidFlagSet(FSOLID_VOLUME_CONTENTS)) then

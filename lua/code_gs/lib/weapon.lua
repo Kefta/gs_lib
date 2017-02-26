@@ -72,7 +72,7 @@ end
 function WEAPON:IsActiveWeapon()
 	local pPlayer = self:GetOwner()
 	
-	return pPlayer ~= NULL and pPlayer:GetActiveWeapon() == self
+	return pPlayer:IsValid() and pPlayer:GetActiveWeapon() == self
 end
 
 function WEAPON:IsViewModelSequenceFinished(iIndex)
@@ -97,52 +97,4 @@ function WEAPON:IsViewModelSequenceFinished(iIndex)
 	
 	-- https://github.com/Facepunch/garrysmod-requests/issues/704
 	return false
-end
-
-function WEAPON:IsVisible(iIndex)
-	local pPlayer = self:GetOwner()
-	
-	if (pPlayer == NULL) then 
-		return false 
-	end
-	
-	local vm = pPlayer:GetViewModel(iIndex)
-	
-	return vm ~= NULL and vm:IsVisible()
-end
-
--- https://github.com/Facepunch/garrysmod-issues/issues/2856
-function WEAPON:SequenceEnd(iIndex)
-	local pPlayer = self:GetOwner()
-	
-	if (pPlayer ~= NULL) then
-		local pViewModel = pPlayer:GetViewModel(iIndex)
-		
-		if (pViewModel ~= NULL) then
-			return (1 - pViewModel:GetCycle()) * pViewModel:SequenceDuration()
-		end
-	end
-	
-	return 0
-end
-
--- Add multiple viewmodel support to SequenceDuration
--- https://github.com/Facepunch/garrysmod-issues/issues/2783
-function WEAPON:SequenceLength(iIndex, iSequence)
-	local pPlayer = self:GetOwner()
-	
-	if (pPlayer ~= NULL) then
-		local pViewModel = pPlayer:GetViewModel(iIndex)
-		
-		if (pViewModel ~= NULL) then
-			-- Workaround for "CBaseAnimating::SequenceDuration(0) NULL pstudiohdr on predicted_viewmodel!"
-			if (iSequence) then
-				return pViewModel:SequenceDuration(iSequence)
-			else
-				return pViewModel:SequenceDuration() / pViewModel:GetPlaybackRate()
-			end
-		end
-	end
-	
-	return 0
 end

@@ -48,6 +48,8 @@ TE_EXPLFLAG_NOFIREBALLSMOKE = 0x80	// do not draw smoke with the fireball
 
 MUZZLEFLASH_FIRSTPERSON = 0x100
 
+ENTITY.LocalEyeAngles = ENTITY.EyeAngles
+
 function ENTITY:ApplyAbsVelocityImpulse(vImpulse)
 	if (vImpulse ~= vector_origin) then
 		if (self:GetMoveType() == MOVETYPE_VPHYSICS) then
@@ -159,7 +161,7 @@ function ENTITY:GetFollowedEntity()
 end
 
 function ENTITY:FollowingEntity(bIgnoreBoneMerge)
-	return (bIgnoreBoneMerge or self:IsEffectActive(EF_BONEMERGE)) and self:GetMoveType() == MOVETYPE_NONE and self:GetMoveParent() ~= NULL
+	return (bIgnoreBoneMerge or self:IsEffectActive(EF_BONEMERGE)) and self:GetMoveType() == MOVETYPE_NONE and self:GetMoveParent():IsValid()
 end
 
 function ENTITY:StopFollowingEntity()
@@ -173,7 +175,7 @@ function ENTITY:GetRootMoveParent()
 	local pEntity = self
 	local pParent = self:GetMoveParent()
 	
-	while (pParent ~= NULL) do
+	while (pParent:IsValid()) do
 		pEntity = pParent
 		pParent = pEntity:GetMoveParent()
 	end
@@ -365,7 +367,7 @@ function ENTITY:PhysicsPushEntity(vPush)
 	
 	local pEntity = tr.Entity
 	
-	if (tr.Entity ~= NULL) then
+	if (tr.Entity:IsValid()) then
 		// If either of the entities is flagged to be deleted, 
 		//  don't call the touch functions
 		if (not (self:IsFlagSet(FL_KILLME) or pEntity:IsFlagSet(FL_KILLME))) then
@@ -520,7 +522,7 @@ function ENTITY:PhysicsToss()
 	local tr = self:PhysicsPushEntity(vMove)
 	local pPhysicsObject = self:GetPhysicsObject()
 	
-	if (pPhysicsObject ~= NULL) then
+	if (pPhysicsObject:IsValid()) then
 		pPhysicsObject:UpdateShadow(self:GetPos(), angle_zero, iFrameTime)
 	end
 	
@@ -552,7 +554,7 @@ end
 local iWaterMask = bit.bor(MASK_WATER, MASK_CURRENT)
 
 function ENTITY:PhysicsCheckWater()
-	if (self:GetMoveParent() ~= NULL) then
+	if (self:GetMoveParent():IsValid()) then
 		return self:WaterLevel() > 1
 	end
 	
@@ -642,7 +644,7 @@ function ENTITY:PhysicsPushEntity(vPush)
 	
 	local pEntity = tr.Entity
 	
-	if (tr.Entity ~= NULL) then
+	if (tr.Entity:IsValid()) then
 		// If either of the entities is flagged to be deleted, 
 		//  don't call the touch functions
 		if (not (self:IsFlagSet(FL_KILLME) or pEntity:IsFlagSet(FL_KILLME))) then

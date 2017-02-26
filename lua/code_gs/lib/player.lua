@@ -85,9 +85,9 @@ FIRE_BULLETS_ALLOW_WATER_SURFACE_IMPACTS = 0x4 // If the shot hits water surface
 
 local ai_debug_shoot_positions = GetConVar("ai_debug_shoot_positions")
 local phys_pushscale = GetConVar("phys_pushscale")
-local sv_showimpacts = CreateConVar("sv_showimpacts", "0", FCVAR_REPLICATED, "Shows client (red) and server (blue) bullet impact point (1=both, 2=client-only, 3=server-only)")
-local sv_showpenetration = CreateConVar("sv_showpenetration", "0", FCVAR_REPLICATED, "Shows penetration trace (if applicable) when the weapon fires")
-local sv_showplayerhitboxes = CreateConVar("sv_showplayerhitboxes", "0", FCVAR_REPLICATED, "Show lag compensated hitboxes for the specified player index whenever a player fires.")
+local sv_showimpacts = CreateConVar("gs_weapons_showimpacts", "0", FCVAR_REPLICATED, "Shows client (red) and server (blue) bullet impact point (1=both, 2=client-only, 3=server-only)")
+local sv_showpenetration = CreateConVar("gs_weapons_showpenetration", "0", FCVAR_REPLICATED, "Shows penetration trace (if applicable) when the weapon fires")
+local sv_showplayerhitboxes = CreateConVar("gs_weapons_showplayerhitboxes", "0", FCVAR_REPLICATED, "Show lag compensated hitboxes for the specified player index whenever a player fires.")
 
 local vDefaultMax = Vector(3, 3, 3)
 local vDefaultMin = -vDefaultMax
@@ -121,7 +121,7 @@ function PLAYER:FireLuaBullets(bullets)
 		sAmmoType = game.GetAmmoName(iAmmoType)
 	end
 	
-	local pAttacker = bullets.Attacker and bullets.Attacker ~= NULL and bullets.Attacker or self
+	local pAttacker = bullets.Attacker and bullets.Attacker:IsValid() and bullets.Attacker or self
 	local fCallback = bullets.Callback
 	local iDamage = bullets.Damage or 1
 	local vDir = bullets.Dir:GetNormal() or self:GetAimVector()
@@ -129,7 +129,7 @@ function PLAYER:FireLuaBullets(bullets)
 	local Filter = bullets.Filter or self
 	local iFlags = bullets.Flags or 0
 	local flForce = bullets.Force or 1
-	local pInflictor = bullets.Inflictor and bullets.Inflictor ~= NULL and bullets.Inflictor or bWeaponInvalid and self or pWeapon
+	local pInflictor = bullets.Inflictor and bullets.Inflictor:IsValid() and bullets.Inflictor or bWeaponInvalid and self or pWeapon
 	local iMask = bullets.Mask or MASK_SHOT
 	local iNPCDamage = bullets.NPCDamage or 0
 	local iNum = bullets.Num or 1
@@ -216,7 +216,7 @@ function PLAYER:FireLuaBullets(bullets)
 	if (iHitNum > 0) then
 		local pLagPlayer = Player(iHitNum)
 		
-		if (pLagPlayer ~= NULL) then
+		if (pLagPlayer:IsValid()) then
 			pLagPlayer:DrawHitBoxes(DEBUG_LENGTH)
 		end
 	end
@@ -509,7 +509,7 @@ function PLAYER:FireEntityBullets(tBullets, sClass)
 	if (SERVER) then
 		local pBullet = ents.Create(sClass or "gs_bullet")
 		
-		if (pBullet ~= NULL) then
+		if (pBullet:IsValid()) then
 			pBullet:SetupBullet(tBullets)
 			pBullet:Spawn()
 		end
@@ -589,7 +589,7 @@ function PLAYER:FireCSSBullets(bullets)
 		sAmmoType = game.GetAmmoName(iAmmoType)
 	end
 	
-	local pAttacker = bullets.Attacker and bullets.Attacker ~= NULL and bullets.Attacker or self
+	local pAttacker = bullets.Attacker and bullets.Attacker:IsValid() and bullets.Attacker or self
 	local fCallback = bullets.Callback
 	local iDamage = bullets.Damage or 1
 	local flDistance = bullets.Distance or MAX_TRACE_LENGTH
@@ -620,7 +620,7 @@ function PLAYER:FireCSSBullets(bullets)
 	local iFlags = bullets.Flags or 0
 	local flForce = bullets.Force or 1
 	--local flHitboxTolerance = bullets.HitboxTolerance or 40
-	local pInflictor = bullets.Inflictor and bullets.Inflictor ~= NULL and bullets.Inflictor or bWeaponInvalid and self or pWeapon
+	local pInflictor = bullets.Inflictor and bullets.Inflictor:IsValid() and bullets.Inflictor or bWeaponInvalid and self or pWeapon
 	local iMask = bullets.Mask or MASK_HITBOX
 	local iNum = bullets.Num or 1
 	local iPenetration = bullets.Penetration or 0
@@ -649,7 +649,7 @@ function PLAYER:FireCSSBullets(bullets)
 	local bShowPenetration = sv_showpenetration:GetBool()
 	local bStartedInWater = bit.band(util.PointContents(vSrc), MASK_WATER) ~= 0
 	local bFirstTimePredicted = IsFirstTimePredicted()
-	local vShootRight, vShootUp, flSpreadBias
+	local vShootRight, vShootUp, flSpreadBias, tEnts, iEntsLen
 	
 	// Wrap it for network traffic so it's the same between client and server
 	local iSeed = self:GetMD5Seed() % 0x100
@@ -669,7 +669,7 @@ function PLAYER:FireCSSBullets(bullets)
 	if (iHitNum > 0) then
 		local pLagPlayer = Player(iHitNum)
 		
-		if (pLagPlayer ~= NULL) then
+		if (pLagPlayer:IsValid()) then
 			pLagPlayer:DrawHitBoxes(DEBUG_LENGTH)
 		end
 	end
@@ -749,7 +749,7 @@ function PLAYER:FireCSSBullets(bullets)
 			end
 			
 			/************* MATERIAL DETECTION ***********/
-			-- FIXME: Change this to use SurfaceProps if we can load our own version
+			-- https://github.com/Facepunch/garrysmod-requests/issues/923
 			local iEnterMaterial = tr.MatType
 			
 			-- https://github.com/Facepunch/garrysmod-requests/issues/787
@@ -851,15 +851,19 @@ function PLAYER:FireCSSBullets(bullets)
 					debugoverlay.Line(vPenetrationEnd, vHitPos, DEBUG_LENGTH, color_altdebug)
 				end
 			else
-				-- FIXME: Cache this!
-				local tEnts = ents.GetAll()
-				local iLen = #tEnts
+				if (not tEnts) then
+					tEnts = ents.GetAll()
+					iEntsLen = #tEnts
+				end
+				
+				local bReplace = false
 				
 				-- Trace for only the entity we hit
-				for i = iLen, 1, -1 do
+				for i = iEntsLen, 1, -1 do
 					if (tEnts[i] == pEntity) then
-						tEnts[i] = tEnts[iLen]
-						tEnts[iLen] = nil
+						tEnts[i] = tEnts[iEntsLen]
+						tEnts[iEntsLen] = nil
+						bReplace = true
 						
 						break
 					end
@@ -873,6 +877,11 @@ function PLAYER:FireCSSBullets(bullets)
 					ignoreworld = true,
 					output = tr
 				})
+				
+				-- Should never be false
+				if (bReplace) then
+					tEnts[iEntsLen] = pEntity
+				end
 				
 				if (bShowPenetration) then
 					debugoverlay.Line(vEnd, vHitPos, DEBUG_LENGTH, color_altdebug)
@@ -1009,14 +1018,14 @@ function PLAYER:FireSDKBullets(bullets)
 		sAmmoType = game.GetAmmoName(iAmmoType)
 	end
 	
-	local pAttacker = bullets.Attacker and bullets.Attacker ~= NULL and bullets.Attacker or self
+	local pAttacker = bullets.Attacker and bullets.Attacker:IsValid() and bullets.Attacker or self
 	local fCallback = bullets.Callback
 	local iDamage = bullets.Damage or 1
 	local flDistance = bullets.Distance or 8000
 	local Filter = bullets.Filter or self
 	local iFlags = bullets.Flags or 0
 	local flForce = bullets.Force or 1
-	local pInflictor = bullets.Inflictor and bullets.Inflictor ~= NULL and bullets.Inflictor or bWeaponInvalid and self or pWeapon
+	local pInflictor = bullets.Inflictor and bullets.Inflictor:IsValid() and bullets.Inflictor or bWeaponInvalid and self or pWeapon
 	local iMask = bullets.Mask or MASK_HITBOX
 	local iNum = bullets.Num or 1
 	local flRangeModifier = bullets.RangeModifier or 0.85
@@ -1061,7 +1070,7 @@ function PLAYER:FireSDKBullets(bullets)
 	if (iHitNum > 0) then
 		local pLagPlayer = Player(iHitNum)
 		
-		if (pLagPlayer ~= NULL) then
+		if (pLagPlayer:IsValid()) then
 			pLagPlayer:DrawHitBoxes(DEBUG_LENGTH)
 		end
 	end

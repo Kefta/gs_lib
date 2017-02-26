@@ -104,7 +104,7 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 	tbl.maxs = Vector(flTemp > 0 and 0 or flTemp, Temp2 > 0 and 0 or Temp2, vOldMaxs.z)
 	local trTemp = util.TraceRay(tbl)
 
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity ~= NULL) then
+	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)
@@ -125,7 +125,7 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 	tbl.output = trTemp
 	util.TraceRay(tbl)
 
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity ~= NULL) then
+	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)
@@ -138,7 +138,7 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 	tbl.maxs = Vector(flTemp > 0 and 0 or flTemp, vOldMaxs.y, vOldMaxs.z)
 	util.TraceRay(tbl)
 
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity ~= NULL) then
+	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)
@@ -154,7 +154,7 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 	maxs.y = flTemp > 0 and 0 or flTemp
 	util.TraceRay(tbl)
 	
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity ~= NULL) then
+	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)

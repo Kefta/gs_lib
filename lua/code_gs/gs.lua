@@ -1,6 +1,8 @@
 if (code_gs) then return end -- No auto-refresh here
 
-local tLang, tLoadedAddons = {}, {}
+AddCSLuaFile()
+
+local tLang, tLoadedAddons = {}, { ["code_gs/load"] = true }
 code_gs = {}
 
 local developer = GetConVar("developer")
@@ -77,24 +79,24 @@ function code_gs.EnvironmentCompile(sPath, bNoError)
 			func = code_gs.SafeCompile(sPath, bNoError)
 		else -- include("shared.lua")
 			local iEndPos = #sActualPath
-			assert(iEndPos > 5) -- Should never happen
 			
 			while (not (sActualPath[iEndPos] == '/' or iEndPos == 5)) do-- Find the file path
 				iEndPos = iEndPos - 1
 			end
 			
-			local _, iStart
+			local iStart
 			
 			if (sActualPath:sub(1, 5) == "@lua/") then
 				iStart = 5
 			else
+				local _
 				_, iStart = sActualPath:find("/lua/", 3, true)
 			end
 			
 			func = code_gs.SafeCompile(sActualPath:sub(iStart + 1, iEndPos) .. sPath, bNoError)
 		end
 		
-		debug.setfenv(func, getfenv(iLevel))
+		setfenv(func, getfenv(iLevel))
 		
 		return func
 	end
@@ -189,117 +191,126 @@ end
 
 local gmod_language = GetConVar("gmod_language")
 
-function code_gs.LoadAddon(sName, bLoadLanguage)
-	sName = sName:lower()
-	
-	-- Do not load this file again!
-	if (sName == "gs") then
-		return {}
+function code_gs.LoadAddon(sPath, sName, bLoadLang)
+	if (sPath[#sPath] == '/') then
+		sPath = sPath:sub(1, #sPath - 1)
 	end
 	
-	local flTime = CurTime()
-	
-	-- Don't load the file more than once in autorun
-	if (tLoadedAddons[sName] == flTime) then
-		return {}
+	if (sPath:lower() == "code_gs/load") then
+		return
 	end
 	
-	local sPath = "code_gs/" .. sName .. ".lua"
 	local tRet = false
 	
 	-- Check the base folder for single addon files
-	if (file.Exists(sPath, "LUA")) then
+	if (file.Exists(sPath .. ".lua", "LUA")) then
 		-- Return includes from this file
-		tRet = code_gs.SafeInclude(sPath)
-		tLoadedAddons[sName] = flTime
-		code_gs.DevMsg(1, string.format(sLoadedAddon, sName))
+		tRet = code_gs.SafeInclude(sPath .. ".lua")
 		
 		if (SERVER) then
-			AddCSLuaFile(sPath)
+			AddCSLuaFile(sPath .. ".lua")
 		end
 	end
 	
-	sPath = "code_gs/" .. sName .. "/"
+	local tFiles = file.Find(sPath .. "/*.lua", "LUA")
+	
+	for i = 1, #tFiles do
+		local sFile = sPath .. "/" .. tFiles[i]:lower()
+		tRet = code_gs.SafeInclude(sFile) ~= false or tRet
+		
+		if (SERVER) then
+			AddCSLuaFile(sFile)
+		end
+	end
+	
+	if (bLoadLang) then
+		tRet = code_gs.LoadTranslation(sPath .. "/lang/", sName) or tRet
+	end
+	
+	tLoadedAddons[sName or sPath:lower()] = tRet ~= false
+	
+	return tRet
+end
+
+function code_gs.LoadTranslation(sPath, sPrefix, sDefaultLang --[[= "en"]])
+	if (sPath[#sPath] ~= '/') then
+		sPath = sPath .. '/'
+	end
+	
 	local tFiles = file.Find(sPath .. "*.lua", "LUA")
 	local iFileLen = #tFiles
 	
-	-- There was only the base file
-	if (iFileLen ~= 0) then
-		for i = 1, iFileLen do
-			local sFile = sPath .. tFiles[i]:lower()
-			code_gs.SafeInclude(sFile)
-			
-			if (SERVER) then
-				AddCSLuaFile(sFile)
-			end
-		end
-		
-		tLoadedAddons[sName] = flTime
-		
-		if (not tRet) then
-			tRet = {}
-			code_gs.DevMsg(1, string.format(sLoadedAddon, sName))
-		end
-	end
-	
-	if (not bLoadLanguage) then
-		return tRet
-	end
-	
-	local sLangFormat = "code_gs/" .. sName .. "/lang/%s.lua"
-	tFiles = file.Find(string.format(sLangFormat, '*'), "LUA")
-	iFileLen = #tFiles
-	
-	-- Don't load just language files
+	-- No languages
 	if (iFileLen == 0) then
-		return tRet
+		return false
 	end
 	
 	if (SERVER) then
 		for i = 1, iFileLen do
-			AddCSLuaFile("code_gs/" .. sName .. "/lang/" .. tFiles[i])
+			AddCSLuaFile(sPath .. tFiles[i])
 		end
 	end
 	
-	local sDefaultPath = string.format(sLangFormat, "en")
-	local sLangPath = string.format(sLangFormat, gmod_language:GetString():sub(-2):lower())
+	local sDefaultPath
 	
-	-- English not found; select a new default
-	if (not file.Exists(sDefaultPath, "LUA")) then
-		sDefaultPath = string.format(sLangFormat, tFiles[1])
+	if (sDefaultLang) then
+		if (file.Exists(sPath .. sDefaultLang, "LUA")) then
+			sDefaultPath = sPath .. sDefaultLang
+		else
+			sDefaultPath = sPath .. "en.lua"
+		end
+	else
+		sDefaultPath = sPath .. "en.lua"
 	end
 	
-	local fLanguage = code_gs.SafeCompile(sDefaultPath)
+	local sLangPath = sPath .. gmod_language:GetString():sub(-2):lower() .. ".lua"
+	local fLanguage
 	
-	if (not fLanguage) then
-		return tRet or {}
+	for i = 1, iFileLen do
+		-- English not found; select a new default
+		if (not file.Exists(sDefaultPath, "LUA")) then
+			sDefaultPath = sPath .. tFiles[i]
+		end
+		
+		fLanguage = code_gs.SafeCompile(sDefaultPath)
+		
+		if (fLanguage) then
+			break
+		end
+		
+		if (i == iFileLen) then
+			return false
+		end
 	end
 	
 	local tDefault = {}
-	debug.setfenv(fLanguage, tDefault)
+	setfenv(fLanguage, tDefault)
 	fLanguage()
+	
+	sPrefix = sPrefix and sPrefix .. "_" or ""
 	
 	if (file.Exists(sLangPath, "LUA")) then
 		local fTranslation = code_gs.SafeCompile(sLangPath)
 		
 		if (not fTranslation) then
-			return tRet or {}
+			for key, str in pairs(tDefault) do
+				tLang[sPrefix .. key:lower()] = str
+			end
+			
+			return true
 		end
 		
 		local tTranslation = {}
-		debug.setfenv(fTranslation, tTranslation) 
+		setfenv(fTranslation, tTranslation) 
 		fTranslation()
 		
-		local sName = sName .. "_"
-		
 		for key, str in pairs(tDefault) do
-			tLang[sName .. key] = tTranslation[key] or str
+			key = key:lower()
+			tLang[sPrefix .. key] = tTranslation[key] or str
 		end
 	else
-		local sName = sName .. "_"
-		
 		for key, str in pairs(tDefault) do
-			tLang[sName .. key] = str
+			tLang[sPrefix .. key:lower()] = str
 		end
 	end
 	
@@ -307,17 +318,19 @@ function code_gs.LoadAddon(sName, bLoadLanguage)
 		sNewLang = sPath .. sNewLang:lower() .. ".lua"
 		
 		if (file.Exists(sNewLang, "LUA")) then
-			local fTranslation = code_gs.SafeCompile(sLangPath)
+			local fTranslation = code_gs.SafeCompile(sNewLang)
 			
 			if (not fTranslation) then
-				return tRet or {}
+				for key, str in pairs(tDefault) do
+					tLang[sPrefix .. key:lower()] = str
+				end
+				
+				return
 			end
 			
 			local tTranslation = {}
-			debug.setfenv(fTranslation, tTranslation) 
+			setfenv(fTranslation, tTranslation) 
 			fTranslation()
-			
-			local sName = sName .. "_"
 			
 			-- Fill in any non-translated phrases with default ones
 			for key, str in pairs(tDefault) do
@@ -325,19 +338,17 @@ function code_gs.LoadAddon(sName, bLoadLanguage)
 				tLang[sName .. key] = tTranslation[key] or str
 			end
 		else
-			local sName = sName .. "_"
-			
 			for key, str in pairs(tDefault) do
 				tLang[sName .. key:lower()] = str
 			end
 		end
-	end, "GS-" .. sName)
+	end, "GS-" .. sPath)
 	
-	return tRet or {}
+	return true
 end
 
 function code_gs.AddonLoaded(sName)
-	return tLoadedAddons[sName:lower()] ~= nil
+	return tLoadedAddons[sName:lower()] == true
 end
 
 function code_gs.GetPhrase(sKey)
