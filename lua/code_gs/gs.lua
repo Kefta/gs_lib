@@ -215,11 +215,27 @@ function code_gs.LoadAddon(sPath, sName, bLoadLang)
 	local tFiles = file.Find(sPath .. "/*.lua", "LUA")
 	
 	for i = 1, #tFiles do
-		local sFile = sPath .. "/" .. tFiles[i]:lower()
-		tRet = code_gs.SafeInclude(sFile) ~= false or tRet
+		local sFile = tFiles[i]:lower()
+		local sRealm = sFile:sub(1, 3)
 		
-		if (SERVER) then
-			AddCSLuaFile(sFile)
+		if (SERVER and sRealm == "sv_") then
+			local sFile = sPath .. "/" .. sFile
+			tRet = code_gs.SafeInclude(sFile) ~= false or tRet
+		elseif (sRealm == "cl_") then
+			local sFile = sPath .. "/" .. sFile
+			
+			if (CLIENT) then
+				tRet = code_gs.SafeInclude(sFile) ~= false or tRet
+			else
+				AddCSLuaFile(sFile)
+			end
+		else
+			local sFile = sPath .. "/" .. sFile
+			tRet = code_gs.SafeInclude(sFile) ~= false or tRet
+			
+			if (SERVER) then
+				AddCSLuaFile(sFile)
+			end
 		end
 	end
 	
