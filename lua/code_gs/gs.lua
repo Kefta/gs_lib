@@ -5,7 +5,7 @@ AddCSLuaFile()
 local tLang, tLoadedAddons = {}, { ["code_gs/load"] = true }
 code_gs = {}
 
-local developer = GetConVar("developer")
+local developer = CreateConVar("gs_developer", "0", FCVAR_ARCHIVE, "Enables developer messaged for GS addons")
 
 function code_gs.DevMsg(iLevel, ...)
 	if (developer:GetInt() >= iLevel) then

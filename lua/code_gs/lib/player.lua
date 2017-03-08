@@ -10,7 +10,7 @@ function PLAYER:ActualEyeAngles()
 	
 	// Cache or retrieve our calculated position in the vehicle
 	-- https://github.com/Facepunch/garrysmod-requests/issues/782
-	local iFrameCount = FrameNumber and FrameNumber() or CurTime()
+	local iFrameCount = FrameNumber and FrameNumber() or UnPredictedCurTime()
 
 	// If we've calculated the view this frame, then there's no need to recalculate it
 	if (self.m_iVehicleViewSavedFrame ~= iFrameCount) then
@@ -41,6 +41,8 @@ function PLAYER:GetNextBestWeapon(bIgnoreCategory, bCritical)
 	-- Why use a gamerules function for this when we can just do it here?
 	-- This is a mix of the multiplay/singleplay algorithms
 	local pCurrent = self:GetActiveWeapon()
+	local bIsValid = pCurrent:IsValid()
+	local iCurWeight = bIsValid and pCurrent:GetWeight()
 	local pBestWep
 	local pFallbackWep
 	
@@ -49,21 +51,23 @@ function PLAYER:GetNextBestWeapon(bIgnoreCategory, bCritical)
 		// If we have an active weapon and this weapon doesn't allow autoswitching away
 		// from another weapon, skip it.
 		if (pCheck:AllowsAutoSwitchTo() and pCheck ~= pCurrent) then
-			if (pCheck:HasAmmo()) then
-				local iWeight = pCheck:GetWeight()
-		
-				if (not bIgnoreCategory and iWeight == pCurrent:GetWeight()) then
+			if (pCheck:HasAmmo()) then				
+				if (not bIgnoreCategory) then
 					return pCheck -- We found a perfect match
 				end
-		
-				if (not pBestWep or iWeight > pBestWep:GetWeight()) then
+				
+				local iWeight = pCheck:GetWeight()
+				
+				if (bIsValid and iWeight == iCurWeight) then
+					return pCheck
+				end
+				
+				if (pBestWep == nil or iWeight > pBestWep:GetWeight()) then
 					pBestWep = pCheck
 				end
-			else
-				-- If it's an emergency, have a backup regardless of ammo
-				if (bCritical and not pFallbackWep) then
-					pFallbackWep = pCheck
-				end
+			-- If it's an emergency, have a backup regardless of ammo
+			elseif (bCritical and not pFallbackWep) then
+				pFallbackWep = pCheck
 			end
 		end
 	end
@@ -110,7 +114,7 @@ function PLAYER:FireLuaBullets(bullets)
 	local sAmmoType
 	local iAmmoType
 	
-	if (not bullets.AmmoType) then
+	if (bullets.AmmoType == nil) then
 		sAmmoType = ""
 		iAmmoType = -1
 	elseif (isstring(bullets.AmmoType)) then
@@ -118,7 +122,7 @@ function PLAYER:FireLuaBullets(bullets)
 		iAmmoType = game.GetAmmoID(sAmmoType)
 	else
 		iAmmoType = bullets.AmmoType
-		sAmmoType = game.GetAmmoName(iAmmoType)
+		sAmmoType = game.GetAmmoName(iAmmoType) or ""
 	end
 	
 	local pAttacker = bullets.Attacker and bullets.Attacker:IsValid() and bullets.Attacker or self
@@ -554,7 +558,7 @@ local tDoublePenetration = {
 local MASK_HITBOX = bit.bor(MASK_SOLID, CONTENTS_DEBRIS, CONTENTS_HITBOX)
 
 function PLAYER:FireCSSBullets(bullets)
-	if (hook.Run("EntityFireCSSBullets", self, bullets) == false) then
+	if (hook.Run("EntityFireBullets", self, bullets) == false) then
 		return
 	end
 	
@@ -567,7 +571,7 @@ function PLAYER:FireCSSBullets(bullets)
 	local sAmmoType
 	local iAmmoType
 	
-	if (not bullets.AmmoType) then
+	if (bullets.AmmoType == nil) then
 		sAmmoType = ""
 		iAmmoType = -1
 	elseif (isstring(bullets.AmmoType)) then
@@ -575,7 +579,7 @@ function PLAYER:FireCSSBullets(bullets)
 		iAmmoType = game.GetAmmoID(sAmmoType)
 	else
 		iAmmoType = bullets.AmmoType
-		sAmmoType = game.GetAmmoName(iAmmoType)
+		sAmmoType = game.GetAmmoName(iAmmoType) or ""
 	end
 	
 	local pAttacker = bullets.Attacker and bullets.Attacker:IsValid() and bullets.Attacker or self
@@ -984,7 +988,7 @@ end
 
 -- FireCSSBullets without penetration
 function PLAYER:FireSDKBullets(bullets)
-	if (hook.Run("EntityFireSDKBullets", self, bullets) == false) then
+	if (hook.Run("EntityFireBullets", self, bullets) == false) then
 		return
 	end
 	
@@ -996,7 +1000,7 @@ function PLAYER:FireSDKBullets(bullets)
 	local sAmmoType
 	local iAmmoType
 	
-	if (not bullets.AmmoType) then
+	if (bullets.AmmoType == nil) then
 		sAmmoType = ""
 		iAmmoType = -1
 	elseif (isstring(bullets.AmmoType)) then
@@ -1004,7 +1008,7 @@ function PLAYER:FireSDKBullets(bullets)
 		iAmmoType = game.GetAmmoID(sAmmoType)
 	else
 		iAmmoType = bullets.AmmoType
-		sAmmoType = game.GetAmmoName(iAmmoType)
+		sAmmoType = game.GetAmmoName(iAmmoType) or ""
 	end
 	
 	local pAttacker = bullets.Attacker and bullets.Attacker:IsValid() and bullets.Attacker or self
@@ -1208,7 +1212,7 @@ function PLAYER:FireSDKBullets(bullets)
 end
 
 function PLAYER:GetMD5Seed()
-	local iFrameCount = CurTime()
+	local iFrameCount = FrameNumber and FrameNumber() or UnPredictedCurTime()
 	
 	if (self.m_iMD5SeedSavedFrame ~= iFrameCount) then
 		self.m_iMD5SeedSavedFrame = iFrameCount

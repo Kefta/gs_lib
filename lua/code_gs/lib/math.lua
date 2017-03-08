@@ -168,15 +168,20 @@ function math.MD5Random(nSeed)
 end
 
 function math.PoundsToKilograms(flPounds)
-	return flPounds * 1/2.2046226218
+	return flPounds/2.2046226218
 end
 
 function math.KilogramsToPounds(flKilos)
 	return flKilos * 2.2046226218
 end
 
-function math.BulletImpulse(flGrains, flFtPerSec, flImpulse)
-	return flFtPerSec * flGrains * 0.00077760497667185 * (flImpulse or 1)
+-- 1 grain = exactly 64.79891 milligrams
+-- 0.00006479891 kilo
+-- 12 inches = 1 ft
+-- 12 * 0.00006479891 = 0.00077758692
+-- Returns kg*in/s
+function math.GrainFeetForce(flGrains, flFtPerSec, flExaggeration --[[= 1]])
+	return flGrains * flFtPerSec * 0.00077758692 * (flExaggeration or 1)
 end
 
 function math.YawToVec(yaw)

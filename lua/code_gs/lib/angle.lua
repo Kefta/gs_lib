@@ -9,12 +9,12 @@ end
 function ANGLE:ClipPunchAngleOffset(aPunch, aClip)
 	//Clip each component
 	local aFinal = self + aPunch
-	local fp = aFinal.p
-	local fy = aFinal.y
-	local fr = aFinal.r
-	local cp = aClip.p
-	local cy = aClip.y
-	local cr = aClip.r
+	local fp = aFinal[1]
+	local fy = aFinal[2]
+	local fr = aFinal[3]
+	local cp = aClip[1]
+	local cy = aClip[2]
+	local cr = aClip[3]
 	
 	if (fp > cp) then
 		fp = cp
@@ -22,7 +22,7 @@ function ANGLE:ClipPunchAngleOffset(aPunch, aClip)
 		fp = -cp
 	end
 	
-	self.p = fp - aPunch.p
+	self[1] = fp - aPunch[1]
 	
 	if (fy > cy) then
 		fy = cy
@@ -30,7 +30,7 @@ function ANGLE:ClipPunchAngleOffset(aPunch, aClip)
 		fy = -cy
 	end
 	
-	self.y = fy - aPunch.y
+	self[2] = fy - aPunch[2]
 	
 	if (fr > cr) then
 		fr = cr
@@ -38,11 +38,11 @@ function ANGLE:ClipPunchAngleOffset(aPunch, aClip)
 		fr = -cr
 	end
 	
-	self.r = fr - aPunch.r
+	self[3] = fr - aPunch[3]
 end
 
 function ANGLE:NormalizeInPlace()
-	if (self == angle_zero) then
+	if (self:IsZero()) then
 		return 0
 	end
 	
@@ -78,18 +78,18 @@ function ANGLE:Matrix(vPos)
 	{0, 0, 0, 0}})
 end
 
-function ANGLE:IsEqualTol(a, tol)
-	if (not tol) then
-		return self == v
+function ANGLE:IsEqualTol(ang, flTol --[[= 0]])
+	if (flTol) then
+		return math.EqualWithTolerance(self[1], ang[1], tol)
+			and math.EqualWithTolerance(self[2], ang[2], tol)
+			and math.EqualWithTolerance(self[3], ang[3], tol)
 	end
 	
-	return math.EqualWithTolerance(self.p, a.p, tol)
-		and math.EqualWithTolerance(self.y, a.y, tol)
-		and math.EqualWithTolerance(self.r, a.r, tol)
+	return self == ang
 end
 
 function ANGLE:Impulse()
-	return Vector(self.r, self.p, self.y)
+	return Vector(self[3], self[1], self[2])
 end
 
 function ANGLE:Length()
@@ -97,9 +97,27 @@ function ANGLE:Length()
 end
 
 function ANGLE:LengthSqr()
-	local p = self.p
-	local y = self.y
-	local r = self.r
+	local p = self[1]
+	local y = self[2]
+	local r = self[3]
 	
 	return p * p + y * y + r * r
+end
+
+function ANGLE:Add(ang)
+	self[1] = self[1] + ang[1]
+	self[2] = self[2] + ang[2]
+	self[3] = self[3] + ang[3]
+end
+
+function ANGLE:Sub(ang)
+	self[1] = self[1] - ang[1]
+	self[2] = self[2] - ang[2]
+	self[3] = self[3] - ang[3]
+end
+
+function ANGLE:Mul(flMultiplier)
+	self[1] = self[1] * flMultiplier
+	self[2] = self[2] * flMultiplier
+	self[3] = self[3] * flMultiplier
 end

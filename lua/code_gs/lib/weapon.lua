@@ -69,6 +69,7 @@ function WEAPON:HasSecondaryAmmo()
 	return false
 end
 
+-- FIXME: Move
 function WEAPON:IsActiveWeapon()
 	local pPlayer = self:GetOwner()
 	
