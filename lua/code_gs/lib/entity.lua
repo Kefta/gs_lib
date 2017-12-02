@@ -914,7 +914,7 @@ function ENTITY:GetBody()
 end
 
 function ENTITY:SetBody(nBody)
-	return self:SetSaveValue("m_nBody", nBody)
+	self:SetSaveValue("m_nBody", nBody)
 end
 
 function ENTITY:CopyVisualData(pSource, bNoModelUpdate --[[= false]])
@@ -944,7 +944,17 @@ function ENTITY:CopyVisualData(pSource, bNoModelUpdate --[[= false]])
 	end
 	
 	self:SetSkin(pSource:GetSkin())
-	--self.GetPlayerColor = pSource.GetPlayerColor -- FIXME
+	
+	-- FIXME: See if there's a way to transfer the function without re-binding
+	local fGetPlayerColor = pSource.GetPlayerColor
+	
+	if (gs.IsType(fGetPlayerColor, TYPE_FUNCTION)) then
+		local col = fGetPlayerColor(pSource)
+		
+		self.GetPlayerColor = function()
+			return col
+		end
+	end
 end
 
 function ENTITY:AddSpawnFlags(nFlags)
@@ -975,5 +985,5 @@ function ENTITY:IsViewModel()
 end
 
 function ENTITY:SetViewModelIndex(iIndex)
-	return self:SetSaveValue("m_nViewModelIndex", iIndex)
+	self:SetSaveValue("m_nViewModelIndex", iIndex)
 end
