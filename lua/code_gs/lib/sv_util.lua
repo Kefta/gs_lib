@@ -1,11 +1,30 @@
+-- Lua implementation for speed
+function IsFirstTimePredicted()
+	return true
+end
+
 local phys_pushscale = GetConVar("phys_pushscale")
 
 function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], Filter --[[= NULL]], iClassIgnore --[[= CLASS_NONE]])
-	local flSrcZ = vSrc.z
-	vSrc.z = flSrcZ + 1 // in case grenade is lying on the ground
+	vSrc = Vector(vSrc) -- Copy vector
+	vSrc[3] = vSrc[3] + 1 // in case grenade is lying on the ground
 	
-	local bFilterTable = Filter and istable(Filter) or false
-	local iFilterLen = bFilterTable and #Filter or nil
+	local bFilter = Filter ~= nil
+	local bEntityFilter, bTableFilter, bFunctionFilter, iFilterLen
+	
+	if (bFilter) then
+		if (isentity(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = true, false, false
+		elseif (istable(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = false, true, false
+			iFilterLen = #Filter
+		elseif (isfunction(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = false, false, true
+		else
+			bFilter = false
+		end
+	end
+	
 	local flDamage = info:GetDamage()
 	local flFalloff = flRadius == 0 and 1 or flDamage / flRadius
 	local bInWater = bit.band(util.PointContents(vSrc), MASK_WATER) ~= 0
@@ -15,7 +34,7 @@ function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], F
 	for i = 1, #tEnts do
 		local pEntity = tEnts[i]
 		
-		if (pEntity:GetInternalVariable("m_takedamage") == 0) then
+		if (pEntity:GetSaveValue("m_takedamage") == 0) then
 			continue
 		end
 		
@@ -25,23 +44,30 @@ function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], F
 			continue
 		end
 		
-		if (Filter) then
-			if (bFilterTable) then
-				local bPass = false
+		if (bFilter) then
+			if (bEntityFilter) then
+				if (Filter == pEntity) then
+					continue
+				end
+			elseif (bTableFilter) then
+				local bFound = false
 				
 				for i = 1, iFilterLen do
-					if (pEntity == Filter[i]) then
-						bPass = true
+					if (Filter[i] == pEntity) then
+						-- FIXME
+						bFound = true
 						
 						break
 					end
 				end
 				
-				if (bPass) then
+				if (bFound) then
 					continue
 				end
-			elseif (pEntity == Filter) then
-				continue
+			elseif (bFunctionFilter) then
+				if (Filter(pEntity) == false) then
+					continue
+				end
 			end
 		end
 		
@@ -59,7 +85,43 @@ function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], F
 		end
 		
 		// radius damage can only be blocked by the world
-		local flDamagePercentage = bIgnoreWorld and 1 or pEntity:GetAmountVisible(vSrc)
+		local flDamagePercentage
+		
+		// returns the percentage of the player that is visible from the given point in the world.
+		// return value is between 0 and 1.
+		if (bIgnoreWorld) then
+			flDamagePercentage = 1
+		elseif (pEntity:IsPlayer()) then
+			local vChest = pEntity:BodyTarget(vSrc)
+			
+			// check what parts of the player we can see from this point and modify the return value accordingly.
+			local flChestZ = vChest[3]
+			
+			local vFeet = pEntity:GetPos()
+			local flPosX = vFeet[1]
+			local flPosY = vFeet[2]
+			local flPosZ = vFeet[3]
+			
+			-- FIXME: Adjust for crouch?
+			local vMin, vMax = pEntity:GetHull()
+			local vRightFacing = (vMax[2] - vMin[2]) / 2 * pEntity:GetAngles():Right()
+			
+			local flFacingX = vRightFacing[1]
+			local flFacingY = vRightFacing[2]
+			
+				// check chest
+			flDamagePercentage = 0.4 * util.GetExplosionDamageAdjustment(vSrc, vChest, pEntity)
+				// check top of head
+				+ 0.2 * util.GetExplosionDamageAdjustment(vSrc, Vector(flPosX, flPosY, vMax[3] - vMin[3] + flPosZ), pEntity)
+				// check feet
+				+ 0.2 * util.GetExplosionDamageAdjustment(vSrc, vFeet, pEntity)
+				// check left "edge"
+				+ 0.1 * util.GetExplosionDamageAdjustment(vSrc, Vector(flPosX - flFacingX, flPosY - flFacingY, flChestZ), pEntity)
+				// check right "edge"
+				+ 0.1 * util.GetExplosionDamageAdjustment(vSrc, Vector(flPosX + flFacingX, flPosY + flFacingY, flChestZ), pEntity)	
+		else
+			flDamagePercentage = util.GetExplosionDamageAdjustment(vSrc, pEntity:BodyTarget(vSrc), pEntity)
+		end
 		
 		if (flDamagePercentage > 0) then
 			// the explosion can 'see' this entity, so hurt them!
@@ -93,7 +155,7 @@ function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], F
 					// This simulates features that usually vary from
 					// person-to-person variables such as bodyweight,
 					// which are all indentical for characters using the same model.
-					infoAdjusted:SetDamageForce(vTarget * flForceScale * code_gs.random:RandomFloat(0.85, 1.15) * phys_pushscale:GetFloat() * 1.5)
+					infoAdjusted:SetDamageForce(vTarget * flForceScale * gs.random:RandomFloat(0.85, 1.15) * phys_pushscale:GetFloat() * 1.5)
 				else
 					// Assume the force passed in is the maximum force. Decay it based on falloff.
 					infoAdjusted:SetDamageForce(vTarget * vForce:Length() * flFalloff)
@@ -105,10 +167,10 @@ function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], F
 					mask = MASK_SHOT
 				})
 				
-				if (tr.Fraction == 1) then
-					pEntity:TakeDamageInfo(infoAdjusted)
-				else
+				if (tr.Hit) then
 					pEntity:DispatchTraceAttack(infoAdjusted, tr, vTarget)
+				else
+					pEntity:TakeDamageInfo(infoAdjusted)
 				end
 				
 				-- https://github.com/Facepunch/garrysmod-requests/issues/755
@@ -117,17 +179,28 @@ function util.CSRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], F
 			end
 		end
 	end
-	
-	-- Restore the vector
-	vSrc.z = flSrcZ
 end
 
 function util.SDKRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], Filter --[[= NULL]], iClassIgnore --[[= CLASS_NONE]])
-	local flSrcZ = vSrc.z
-	vSrc.z = flSrcZ + 1 // in case grenade is lying on the ground
+	vSrc = Vector(vSrc) -- Copy vector
+	vSrc[3] = vSrc[3] + 1 // in case grenade is lying on the ground
 	
-	local bFilterTable = Filter and istable(Filter) or false
-	local iFilterLen = bFilterTable and #Filter or nil
+	local bFilter = Filter ~= nil
+	local bEntityFilter, bTableFilter, bFunctionFilter, iFilterLen
+	
+	if (bFilter) then
+		if (isentity(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = true, false, false
+		elseif (istable(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = false, true, false
+			iFilterLen = #Filter
+		elseif (isfunction(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = false, false, true
+		else
+			bFilter = false
+		end
+	end
+	
 	local flDamage = info:GetDamage()
 	local flFalloff = flRadius == 0 and 1 or flDamage / flRadius
 	local bInWater = bit.band(util.PointContents(vSrc), MASK_WATER) ~= 0
@@ -137,7 +210,7 @@ function util.SDKRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], 
 	for i = 1, #tEnts do
 		local pEntity = tEnts[i]
 		
-		if (pEntity:GetInternalVariable("m_takedamage") == 0) then
+		if (pEntity:GetSaveValue("m_takedamage") == 0) then
 			continue
 		end
 		
@@ -147,23 +220,30 @@ function util.SDKRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], 
 			continue
 		end
 		
-		if (Filter) then
-			if (bFilterTable) then
-				local bPass = false
+		if (bFilter) then
+			if (bEntityFilter) then
+				if (Filter == pEntity) then
+					continue
+				end
+			elseif (bTableFilter) then
+				local bFound = false
 				
 				for i = 1, iFilterLen do
-					if (pEntity == Filter[i]) then
-						bPass = true
+					if (Filter[i] == pEntity) then
+						-- FIXME
+						bFound = true
 						
 						break
 					end
 				end
 				
-				if (bPass) then
+				if (bFound) then
 					continue
 				end
-			elseif (pEntity == Filter) then
-				continue
+			elseif (bFunctionFilter) then
+				if (Filter(pEntity) == false) then
+					continue
+				end
 			end
 		end
 		
@@ -192,7 +272,7 @@ function util.SDKRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], 
 				filter = info:GetInflictor()
 			})
 			
-			if (not tr.StartSolid and tr.Fraction == 1 or tr.Entity == pEntity) then
+			if (not (tr.StartSolid or tr.Hit) or tr.Entity == pEntity) then
 				vSpot = tr.StartSolid and vSrc or tr.HitPos
 			end
 		end
@@ -228,7 +308,7 @@ function util.SDKRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], 
 					// This simulates features that usually vary from
 					// person-to-person variables such as bodyweight,
 					// which are all indentical for characters using the same model.
-					infoAdjusted:SetDamageForce(vTarget * flForceScale * code_gs.random:RandomFloat(0.85, 1.15) * phys_pushscale:GetFloat() * 1.5)
+					infoAdjusted:SetDamageForce(vTarget * flForceScale * gs.random:RandomFloat(0.85, 1.15) * phys_pushscale:GetFloat() * 1.5)
 				else
 					// Assume the force passed in is the maximum force. Decay it based on falloff.
 					infoAdjusted:SetDamageForce(vTarget * vForce:Length() * flFalloff)
@@ -242,9 +322,6 @@ function util.SDKRadiusDamage(info, vSrc, flRadius, bIgnoreWorld --[[= false]], 
 			end
 		end
 	end
-	
-	-- Restore the vector
-	vSrc.z = flSrcZ
 end
 
 // return a multiplier that should adjust the damage done by a blast at position vecSrc to something at the position
@@ -254,7 +331,7 @@ end
 // this algorithm was taken from the HL2 version of RadiusDamage.
 DENSITY_ABSORB_ALL_DAMAGE = 3000
 
-function util.GetExplosionDamageAdjustment(vSrc, vEnd, Filter)
+function util.GetExplosionDamageAdjustment(vSrc, vEnd, Filter --[[= NULL]])
 	local tr = util.TraceLine({
 		start = vSrc,
 		endpos = vEnd,
@@ -262,7 +339,7 @@ function util.GetExplosionDamageAdjustment(vSrc, vEnd, Filter)
 		filter = Filter
 	})
 	
-	if (tr.Fraction == 1) then
+	if (not tr.Hit) then
 		return 1
 	end
 	
@@ -270,22 +347,10 @@ function util.GetExplosionDamageAdjustment(vSrc, vEnd, Filter)
 		return 0
 	end
 	
-	local pEntity = tr.Entity
-	
-	if (pEntity == NULL or isentity(Filter) and pEntity:GetOwner() == Filter) then
-		return 0
-	end
-	
-	if (istable(Filter)) then
-		for i = 1, #Filter do
-			if (Filter[i] == pEntity) then
-				return 0
-			end
-		end
-	end
-	
 	// if we didn't hit world geometry perhaps there's still damage to be done here.
+	
 	// check to see if this part of the player is visible if entities are ignored.
+	-- FIXME: Apply filter?
 	util.TraceLine({
 		start = vSrc,
 		endpos = vEnd,
@@ -293,19 +358,21 @@ function util.GetExplosionDamageAdjustment(vSrc, vEnd, Filter)
 		output = tr
 	})
 	
-	if (tr.Fraction == 1) then
-		local pPhysicsObj = pEntity:GetPhysicsObject()
-		
-		if (pEntity == NULL or pPhysicsObj:IsValid()) then
-			return 0.75 // we're blocked by something that isn't an entity with a physics module or world geometry, just cut damage in half for now.
-		end
-		
-		local flScale = pPhysicsObj:GetDensity() / DENSITY_ABSORB_ALL_DAMAGE
+	if (tr.Hit) then
+		return 0
+	end
+	
+	local pPhysObj = pEntity:GetPhysicsObject()
+	
+	if (pPhysObj:IsValid()) then
+		local flScale = pPhysObj:GetDensity() / DENSITY_ABSORB_ALL_DAMAGE
 		
 		if (flScale < 1) then
 			return 1 - flScale
 		end
+		
+		return 0
 	end
 	
-	return 0
+	return 0.75 // we're blocked by something that isn't an entity with a physics module or world geometry, just cut damage in half for now.
 end

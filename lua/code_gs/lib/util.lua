@@ -1,3 +1,6 @@
+-- FIXME: Change all tr.Entity validity checks and tr.Fraction length checks to tr.Hit
+-- FIXME: Add filter function support
+
 DEBUG_LENGTH = 3
 
 COORD_EXTENT = 2 * 16384
@@ -99,12 +102,12 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 	local vOldMaxs = tbl.maxs
 	
 	// Check the -x, -y quadrant
-	local flTemp = vOldMaxs.x
-	local Temp2 = vOldMaxs.y
-	tbl.maxs = Vector(flTemp > 0 and 0 or flTemp, Temp2 > 0 and 0 or Temp2, vOldMaxs.z)
+	local flTemp = vOldMaxs[1]
+	local Temp2 = vOldMaxs[2]
+	tbl.maxs = Vector(flTemp > 0 and 0 or flTemp, Temp2 > 0 and 0 or Temp2, vOldMaxs[3])
 	local trTemp = util.TraceRay(tbl)
 
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
+	if (trTemp.Hit and trTemp.HitNormal >= 0.7) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)
@@ -115,17 +118,17 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 	-- Re-use vector
 	local Temp2 = tbl.maxs
 	local vOldMins = tbl.mins
-	flTemp = vOldMins.x
-	Temp2.x = flTemp < 0 and 0 or flTemp
-	flTemp = vOldMins.y
-	Temp2.y = flTemp < 0 and 0 or flTemp
-	Temp2.z = vOldMins.z
+	flTemp = vOldMins[1]
+	Temp2[1] = flTemp < 0 and 0 or flTemp
+	flTemp = vOldMins[2]
+	Temp2[2] = flTemp < 0 and 0 or flTemp
+	Temp2[3] = vOldMins[3]
 	tbl.mins = Temp2
 	tbl.maxs = vOldMaxs
 	tbl.output = trTemp
 	util.TraceRay(tbl)
 
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
+	if (trTemp.Hit and trTemp.HitNormal >= 0.7) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)
@@ -133,12 +136,12 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 		return tr
 	end
 	
-	tbl.mins.x = vOldMins.x
-	flTemp = vOldMaxs.x
-	tbl.maxs = Vector(flTemp > 0 and 0 or flTemp, vOldMaxs.y, vOldMaxs.z)
+	tbl.mins[1] = vOldMins[1]
+	flTemp = vOldMaxs[1]
+	tbl.maxs = Vector(flTemp > 0 and 0 or flTemp, vOldMaxs[2], vOldMaxs[3])
 	util.TraceRay(tbl)
 
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
+	if (trTemp.Hit and trTemp.HitNormal >= 0.7) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)
@@ -146,15 +149,15 @@ function util.TracePlayerBBoxForGround(tbl, tr)
 		return tr
 	end
 	
-	flTemp = vOldMins.x
-	mins.x = flTemp < 0 and 0 or flTemp
-	mins.y = vOldMins.y
-	maxs.x = vOldMaxs.x
-	flTemp = vOldMaxs.y
-	maxs.y = flTemp > 0 and 0 or flTemp
+	flTemp = vOldMins[1]
+	mins[1] = flTemp < 0 and 0 or flTemp
+	mins[2] = vOldMins[2]
+	maxs[1] = vOldMaxs[1]
+	flTemp = vOldMaxs[2]
+	maxs[2] = flTemp > 0 and 0 or flTemp
 	util.TraceRay(tbl)
 	
-	if (trTemp.HitNormal >= 0.7 and trTemp.Entity:IsValid()) then
+	if (trTemp.Hit and trTemp.HitNormal >= 0.7) then
 		trTemp.Fraction = flFraction
 		trTemp.HitPos = vEndPos
 		table.CopyFromTo(trTemp, tr)
@@ -174,10 +177,26 @@ function util.ClipTraceToPlayers(tbl, tr, flMaxRange --[[= 60]])
 	tbl.output = nil
 	local vAbsStart = tbl.start
 	local vAbsEnd = tbl.endpos
-	local Filter = tbl.filter
 	local flSmallestFraction = tr.Fraction
 	local tPlayers = player.GetAll()
 	local trOutput
+	
+	local Filter = tbl.filter
+	local bFilter = Filter ~= nil
+	local bEntityFilter, bTableFilter, bFunctionFilter, iFilterLen
+	
+	if (bFilter) then
+		if (isentity(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = true, false, false
+		elseif (istable(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = false, true, false
+			iFilterLen = #Filter
+		elseif (isfunction(Filter)) then
+			bEntityFilter, bTableFilter, bFunctionFilter = false, false, true
+		else
+			bFilter = false
+		end
+	end
 	
 	for i = 1, #tPlayers do
 		local pPlayer = tPlayers[i]
@@ -186,29 +205,37 @@ function util.ClipTraceToPlayers(tbl, tr, flMaxRange --[[= 60]])
 			continue
 		end
 		
-		-- Don't bother to trace if the player is in the filter
-		if (isentity(Filter)) then
-			if (Filter == pPlayer) then
-				continue
-			end
-		elseif (istable(Filter)) then
-			local bFound = false
-			
-			for i = 1, #Filter do
-				if (Filter[i] == pPlayer) then
-					bFound = true
-					
-					break
+		if (bFilter) then
+			-- Don't bother to trace if the player is in the filter
+			if (bEntityFilter) then
+				if (Filter == pPlayer) then
+					continue
 				end
-			end
-			
-			if (bFound) then
-				continue
+			elseif (bTableFilter) then
+				local bFound = false
+				
+				for i = 1, iFilterLen do
+					if (Filter[i] == pPlayer) then
+						-- FIXME
+						bFound = true
+						
+						break
+					end
+				end
+				
+				if (bFound) then
+					continue
+				end
+			elseif (bFunctionFilter) then
+				if (Filter(pPlayer) == false) then
+					continue
+				end
 			end
 		end
 		
 		local flRange = pPlayer:WorldSpaceCenter():DistanceSqrToRay(vAbsStart, vAbsEnd)
 		
+		-- FIXME: Can range even be less that 0?
 		if (flRange < 0 or flRange > flMaxRange) then
 			continue
 		end
@@ -231,7 +258,7 @@ function util.ClipTraceToPlayers(tbl, tr, flMaxRange --[[= 60]])
 end
 
 function util.TraceRay(tbl)
-	if (tbl.mins) then
+	if (tbl.mins and tbl.maxs) then
 		return util.TraceHull(tbl)
 	end
 	
@@ -259,9 +286,9 @@ function util.FindHullIntersection(tbl, tr)
 	for i = 1, 2 do
 		for j = 1, 2 do
 			for k = 1, 2 do
-				tbl.endpos = Vector(vHullEnd.x + tBounds[i].x, 
-					vHullEnd.y + tBounds[j].y,
-					vHullEnd.z + tBounds[k].z)
+				tbl.endpos = Vector(vHullEnd[1] + tBounds[i][1], 
+					vHullEnd[2] + tBounds[j][2],
+					vHullEnd[3] + tBounds[k][3])
 				
 				local trTemp = util.TraceLine(tbl)
 				

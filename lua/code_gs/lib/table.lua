@@ -1,120 +1,76 @@
-local temptbl = {}
+local pairs = pairs
+local setmetatable = setmetatable
 
-local function MergeSort(tbl, iLow, iHigh, bReverse)
-	if (iLow < iHigh) then
-		local iMiddle = math.floor(iLow + (iHigh - iLow) / 2)
-		MergeSort(tbl, iLow, iMiddle, bReverse)
-		MergeSort(tbl, iMiddle + 1, iHigh, bReverse)
-		
-		for i = iLow, iHigh do
-			temptbl[i] = tbl[i]
-		end
-		
-		local i = iLow
-		local j = iMiddle + 1
-		local k = iLow
-		
-		while (i <= iMiddle and j <= iHigh) do
-			if (temptbl[i] <= temptbl[j]) then
-				if (bReverse) then
-					tbl[k] = temptbl[j]
-					j = j + 1
-				else
-					tbl[k] = temptbl[i]
-					i = i + 1
-				end
-			else
-				if (bReverse) then
-					tbl[k] = temptbl[i]
-					i = i + 1
-				else
-					tbl[k] = temptbl[j]
-					j = j + 1
-				end
-			end
-			
-			k = k + 1
-		end
-		
-		while (i <= iMiddle) do
-			tbl[k] = temptbl[i]
-			k = k + 1
-			i = i + 1
-		end
-	end
-end
+local math_floor = math.floor
+local debug_getmetatable = debug.getmetatable
 
-local function MergeSortMember(tbl, iLow, iHigh, bReverse, sMember)
-	if (iLow < iHigh) then
-		local iMiddle = math.floor(iLow + (iHigh - iLow) / 2)
-		MergeSortMember(tbl, iLow, iMiddle, bReverse, sMember)
-		MergeSortMember(tbl, iMiddle + 1, iHigh, bReverse, sMember)
-		
-		for i = iLow, iHigh do
-			temptbl[i] = tbl[i][sMember]
-		end
-		
-		local i = iLow
-		local j = iMiddle + 1
-		local k = iLow
-		
-		while (i <= iMiddle and j <= iHigh) do
-			if (temptbl[i] <= temptbl[j]) then
-				tbl[k][sMember] = temptbl[i]
-				i = i + 1
-			else
-				tbl[k][sMember] = temptbl[j]
-				j = j + 1
-			end
-			
-			k = k + 1
-		end
-		
-		while (i <= iMiddle) do
-			tbl[k][sMember] = temptbl[i]
-			k = k + 1
-			i = i + 1
-		end
-	end
-end
-
-function table.MergeSort(tbl, bReverse, sMember)
-	if (sMember) then
-		MergeSortMember(tbl, 1, #tbl, bReverse, sMember)
-	else
-		MergeSort(tbl, 1, #tbl, bReverse)
+function table.ShallowCopy(tbl, bOutsideMeta --[[= true]])
+	gs.CheckType(tbl, 1, TYPE_TABLE)
+	
+	if (gs.CheckType(bOutsideMeta, 2, {TYPE_BOOL, TYPE_NIL}) == TYPE_NIL) then
+		bOutsideMeta = true
 	end
 	
-	return tbl
-end
-
-function table.InheritNoBaseClass(tbl, tBase)
-	for k, v in pairs(tBase) do
-		if (tbl[k] == nil) then
-			tbl[k] = v
-		elseif (istable(tbl[k]) && istable(v)) then
-			table.InheritNoBaseClass(tbl[k], v)
-		end
-	end
-end
-
-function table.DeepCopy(tbl)
-	local tCopy = {}
-	setmetatable(tCopy, debug.getmetatable(tbl))
+	local tRet = {}
 	
 	for k, v in pairs(tbl) do
-		if (istable(v)) then
-			tCopy[k] = table.DeepCopy(v)
-		elseif (isvector(v)) then
-			tCopy[k] = Vector(v)
-		elseif (isangle(v)) then
-			tCopy[k] = Angle(v)
-		--[[elseif (ismatrix(v)) then
-			tCopy[k] = Matrix(v)]]
-		else
-			tCopy[k] = v
-		end
+		tRet[k] = v
 	end
 	
-	return tCopy
+	if (bOutsideMeta) then
+		setmetatable(tRet, debug_getmetatable(tbl))
+	end
+	
+	return tRet
+end
+
+local function InheritNoBaseClass(tTarget, tBase)
+	-- Inherit tBase's metatable if tTarget doesn't have one
+	-- Use debug_getmetatable since the __metatable key will be taken
+	-- Care of in the loop
+	if (debug_getmetatable(tTarget) == nil) then
+		setmetatable(tTarget, debug_getmetatable(tBase))
+	end
+	
+	for k, v in pairs(tBase) do
+		local TargetVal = tTarget[k]
+		
+		if (TargetVal == nil) then
+			tTarget[k] = v
+		elseif (gs.IsType(TargetVal, TYPE_TABLE) and gs.IsType(v, TYPE_TABLE)) then
+			InheritNoBaseClass(TargetVal, v)
+		end
+	end
+end
+
+local function InheritNoBaseClassCopy(tTarget, tBase)
+	if (debug_getmetatable(tTarget) == nil) then
+		setmetatable(tTarget, debug_getmetatable(tBase))
+	end
+	
+	for k, v in pairs(tBase) do
+		local TargetVal = tTarget[k]
+		
+		if (TargetVal == nil) then
+			tTarget[gs.Copy(k)] = gs.Copy(v)
+		elseif (gs.IsType(TargetVal, TYPE_TABLE) and gs.IsType(v, TYPE_TABLE)) then
+			InheritNoBaseClassCopy(TargetVal, v)
+		end
+	end
+end
+
+-- FIXME: Rename?
+function table.InheritNoBaseClass(tTarget, tBase, bCopyElements --[[= false]])
+	gs.CheckType(tTarget, 1, TYPE_TABLE)
+	gs.CheckType(tBase, 2, TYPE_TABLE)
+	
+	if (gs.CheckType(bCopyElements, 3, {TYPE_BOOL, TYPE_NIL}) == TYPE_NIL) then
+		bCopyElements = false
+	end
+	
+	if (bCopyElements) then
+		InheritNoBaseClassCopy(tTarget, tBase)
+	else
+		InheritNoBaseClass(tTarget, tBase)
+	end
 end

@@ -1,56 +1,15 @@
-FLT_EPSILON = 1.19209290e-07
-
-if (not code_gs.random) then
-	local Ret = code_gs.LoadAddon("code_gs/minstd", "minstd")
-	
-	if (not Ret) then
-		error("[GS] MINSTD failed to load!")
-	end
-	
-	code_gs.random = unpack(Ret)
-end
-
-function code_gs.random:SharedRandomFloat(pPlayer, sName, flMin, flMax, iAdditionalSeed --[[= 0]])
-	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
-	
-	return self:RandomFloat(flMin, flMax)
-end
-
-function code_gs.random:SharedRandomInt(pPlayer, sName, iMin, iMax, iAdditionalSeed --[[= 0]])
-	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
-	
-	return self:RandomInt(iMin, iMax)
-end
-
-function code_gs.random:SharedRandomVector(pPlayer, sName, flMin, flMax, iAdditionalSeed --[[= 0]])
-	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
-
-	return Vector(self:RandomFloat(flMin, flMax), 
-			self:RandomFloat(flMin, flMax), 
-			self:RandomFloat(flMin, flMax))
-end
-
-function code_gs.random:SharedRandomAngle(pPlayer, sName, flMin, flMax, iAdditionalSeed --[[= 0]])
-	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
-
-	return Angle(self:RandomFloat(flMin, flMax), 
-			self:RandomFloat(flMin, flMax), 
-			self:RandomFloat(flMin, flMax))
-end
-
-function code_gs.random:SharedRandomColor(pPlayer, sName, iMin, iMax, iAdditionalSeed --[[= 0]])
-	self:SetSeed(util.SeedFileLineHash(pPlayer:GetMD5Seed() % 0x80000000, sName, iAdditionalSeed))
-	
-	return Color(self:RandomInt(iMin, iMax), 
-			self:RandomInt(iMin, iMax), 
-			self:RandomInt(iMin, iMax))
-end
-
 local band = bit.band
 local bnot = bit.bnot
 local bor = bit.bor
 local bxor = bit.bxor
+local rshift = bit.rshift
 local floor = math.floor
+local log = math.log
+local sin = math.sin
+local cos = math.cos
+local rad = math.rad
+local abs = math.abs
+local exp = math.exp
 
 // The four core functions - F1 is optimized somewhat
 // local function f1(x, y, z) bit.bor(bit.band(x, y), bit.band(bit.bnot(x), z)) end
@@ -79,7 +38,10 @@ local function Step4(w, x, y, z, flData, iStep)
 	return bor((w * 2^iStep) % 0x100000000, floor(w % 0x100000000 / 2^(0x20 - iStep))) + x
 end
 
-function math.MD5Random(nSeed)
+function math.MD5Random(iSeed)
+	gs.CheckType(iSeed, 1, TYPE_NUMBER)
+	
+	-- FIXME: Add paragraph
 	-- https://github.com/Facepunch/garrysmod-issues/issues/2820
 	local bEnabled = jit.status()
 	
@@ -87,9 +49,9 @@ function math.MD5Random(nSeed)
 		jit.off()
 	end
 	
-	nSeed = nSeed % 0x100000000
+	iSeed = iSeed % 0x100000000
 	
-	local a = Step1(0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, nSeed + 0xd76aa478, 7)
+	local a = Step1(0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, iSeed + 0xd76aa478, 7)
 	local d = Step1(0x10325476, a, 0xefcdab89, 0x98badcfe, 0xe8c7b7d6, 12)
 	local c = Step1(0x98badcfe, d, a, 0xefcdab89, 0x242070db, 17)
 	local b = Step1(0xefcdab89, c, d, a, 0xc1bdceee, 22)
@@ -109,7 +71,7 @@ function math.MD5Random(nSeed)
 	a = Step2(a, b, c, d, 0xf61e25e2, 5)
 	d = Step2(d, a, b, c, 0xc040b340, 9)
 	c = Step2(c, d, a, b, 0x265e5a51, 14)
-	b = Step2(b, c, d, a, nSeed + 0xe9b6c7aa, 20)
+	b = Step2(b, c, d, a, iSeed + 0xe9b6c7aa, 20)
 	a = Step2(a, b, c, d, 0xd62f105d, 5)
 	d = Step2(d, a, b, c, 0x02441453, 9)
 	c = Step2(c, d, a, b, 0xd8a1e681, 14)
@@ -132,7 +94,7 @@ function math.MD5Random(nSeed)
 	c = Step3(c, d, a, b, 0xf6bb4b60, 16)
 	b = Step3(b, c, d, a, 0xbebfbc70, 23)
 	a = Step3(a, b, c, d, 0x289b7ec6, 4)
-	d = Step3(d, a, b, c, nSeed + 0xeaa127fa, 11)
+	d = Step3(d, a, b, c, iSeed + 0xeaa127fa, 11)
 	c = Step3(c, d, a, b, 0xd4ef3085, 16)
 	b = Step3(b, c, d, a, 0x04881d05, 23)
 	a = Step3(a, b, c, d, 0xd9d4d039, 4)
@@ -140,7 +102,7 @@ function math.MD5Random(nSeed)
 	c = Step3(c, d, a, b, 0x1fa27cf8, 16)
 	b = Step3(b, c, d, a, 0xc4ac5665, 23)
 	
-	a = Step4(a, b, c, d, nSeed + 0xf4292244, 6)
+	a = Step4(a, b, c, d, iSeed + 0xf4292244, 6)
 	d = Step4(d, a, b, c, 0x432aff97, 10)
 	c = Step4(c, d, a, b, 0xab9423c7, 15)
 	b = Step4(b, c, d, a, 0xfc93a039, 21)
@@ -167,12 +129,33 @@ function math.MD5Random(nSeed)
 	return a
 end
 
+local tNilNumberType = {TYPE_NIL, TYPE_NUMBER}
+
+function math.ApproxInvSqrt(num, iIterations --[[= 1]])
+	gs.CheckType(num, 1, TYPE_NUMBER)
+	
+	if (gs.CheckType(iIterations, 2, tNilNumberType) == TYPE_NIL) then
+		iIterations = 1
+	end
+	
+	-- FIXME: Add explanation
+	local x2 = num * 0.5
+	num = 0x5f3759df - rshift(x2, 1)
+	
+	for i = 1, iIterations do
+		num = num * (1.5 - x2 * num * num)
+	end
+	
+	return num
+end
+
+-- https://www.ngs.noaa.gov/PUBS_LIB/FedRegister/FRdoc59-5442.pdf
 function math.PoundsToKilograms(flPounds)
-	return flPounds/2.2046226218
+	return flPounds * 0.4535924277
 end
 
 function math.KilogramsToPounds(flKilos)
-	return flKilos * 2.2046226218
+	return flKilos * 2.2046226218488
 end
 
 -- 1 grain = exactly 64.79891 milligrams
@@ -185,43 +168,59 @@ function math.GrainFeetForce(flGrains, flFtPerSec, flExaggeration --[[= 1]])
 end
 
 function math.YawToVec(yaw)
-	local ang = math.rad(yaw)
+	local ang = rad(yaw)
 	
-	return Vector(math.cos(ang), math.sin(ang), 0)
+	return Vector(cos(ang), sin(ang))
 end
 
 function math.IsPowerOfTwo(num)
-	return bit.band(num, num - 1) == 0
+	return band(num, num - 1) == 0
 end
 
-function math.SmallestPowerOfTwoGreaterOrEqual(num)
-	num = bit.bor(bit.rshift(num - 1, 1), num)
-	num = bit.bor(bit.rshift(num, 2), num)
-	num = bit.bor(bit.rshift(num, 4), num)
-	num = bit.bor(bit.rshift(num, 8), num)
-	num = bit.bor(bit.rshift(num, 16), num)
+function math.BitCount(iNum)
+	assert_type(iNum, "number", 1)
+	assert_integer(iNum, 1)
+	
+	-- Don't do log(0)
+	if (iNum == 0) then
+		return 0
+	end
+	
+	assert_customarg(iNum > 0, "number is not positive")
+	
+	return floor(log(iNum, 2)) + 1
+end
+
+-- FIXME: Fix these!
+--[[function math.SmallestPowerOfTwoGreaterOrEqual(num)
+	num = bor(rshift(num - 1, 1), num)
+	num = bor(rshift(num, 2), num)
+	num = bor(rshift(num, 4), num)
+	num = bor(rshift(num, 8), num)
+	num = bor(rshift(num, 16), num)
 	
 	return num + 1
 end
 
 function math.LargestPowerOfTwoLessThanOrEqual(num)
-	if (num >= 0x80000000) then
-		return 0x80000000
-	end
-	
-	return math.rshift(math.SmallestPowerOfTwoGreaterOrEqual(num + 1), 1)
-end
+	return rshift(math.SmallestPowerOfTwoGreaterOrEqual(num + 1), 1)
+end]]
+
+local iMod = 360/65536
+local iInverseMod = 65536/360
 
 function math.AngleMod(ang)
-	return 360/65536 * bit.band(math.Truncate(ang * 65536/360), 65535)
+	return iMod * band(math.Truncate(ang * iInverseMod), 65535)
 end
 
 function math.RemapClamped(val, A, B, C, D)
 	if (A == B) then
-		return val >= B and D or C
+		return val < B and C or D
 	end
 	
-	return C + (D - C) * math.Clamp((val - A) / (B - A), 0, 1)
+	local flVal = (val - A) / (B - A)
+	
+	return C + (D - C) * (flVal < 0 and 0 or flVal > 1 and 1 or flVal)
 end
 
 function math.FLerp(f1, f2, i1, i2, x)
@@ -233,33 +232,31 @@ function math.Sign(num)
 end
 
 function math.EqualWithTolerance(val1, val2, tol)
-	return math.abs(val1 - val2) <= tol
+	return abs(val1 - val2) <= tol
 end
 
 // halflife is time for value to reach 50%
-// decayTo is factor the value should decay to in decayTime
-local flLogHalf = math.log(0.5)
+// flDecayTo is factor the value should decay to in flDecayTime
+local flLogHalf = log(0.5)
 
-function math.ExpDecay(flDecayTo, flDecayTime, flRate)
-	if (flRate) then
-		return math.exp(math.log(flDecayTo) / flDecayTime * flRate)
+function math.ExpDecay(flDecayTo, flDecayTime, flRate --[[= 1]])
+	if (flRate == nil) then
+		-- flDecayTo = Half-life
+		-- flDecayTime = Rate
+		return exp(flLogHalf / flDecayTo * flDecayTime)
 	end
 	
-	-- flDecayTo = Half-life
-	-- flDecayTime = Rate
-	
-	return math.exp(flLogHalf / flDecayTo * flDecayTime)
+	return exp(log(flDecayTo) / flDecayTime * flRate)
 end
 
 // Get the integrated distanced traveled
-// decayTo is factor the value should decay to in decayTime
+// flDecayTo is factor the value should decay to in flDecayTime
 // dt is the time relative to the last velocity update
 function math.ExpDecayIntegral(flDecayTo, flDecayTime, flRate)
-	return (flDecayTo ^ (flRate / flDecayTime) * flDecayTime - flDecayTime) / math.log(flDecayTo)
+	return (flDecayTo ^ (flRate / flDecayTime) * flDecayTime - flDecayTime) / log(flDecayTo)
 end
 
 // hermite basis function for smooth interpolation
-// Similar to Gain() above, but very cheap to call
 // value should be between 0 & 1 inclusive
 function math.SimpleSpline(num)
 	local flSqr = num * num
@@ -268,25 +265,101 @@ function math.SimpleSpline(num)
 	return (3 * flSqr - 2 * flSqr * num)
 end
 
-// This version doesn't premultiply by 0.5f, so it's the area of the rectangle instead
-function math.TriArea2DTimesTwo(vA, vB, vC)
-	return (vB.x - vA.x) * (vC.y - vA.y) - (vB.y - vA.y) * (vC.x - vA.x)
-end
-
-function math.GetBarycentricCoords2D(vA, vB, vC, vpt)
-	// Note, because to top and bottom are both x2, the issue washes out in the composite
-	local invTriArea = 1 / math.TriArea2DTimesTwo(vA, vB, vC)
+function math.SimpleSplineRemapVal(num, A, B, C, D)
+	if (A == B) then
+		return num < B and C or D
+	end
 	
-	// NOTE: We assume here that the lightmap coordinate vertices go counterclockwise.
-	// If not, TriArea2D() is negated so this works out right.
-	return {math.TriArea2DTimesTwo(vB, vC, vpt) * invTriArea,
-		math.TriArea2DTimesTwo(vC, vA, vpt) * invTriArea,
-		math.TriArea2DTimesTwo(vA, vB, vpt) * invTriArea}
+	local flVal = (num - A) / (B - A)
+	
+	return C + (D - C) * math.SimpleSpline(flVal)
 end
 
-// Return true of the boxes intersect (but not if they just touch).
-function math.QuickBoxIntersectTest(vBox1Min, vBox1Max, vBox2Min, vBox2Max)
-	return self.x - flRadius < bbMax.x and self.x + flRadius > bbMin.x and
-		self.y - flRadius < bbMax.y and self.y + flRadius > bbMin.y and
-		self.z - flRadius < bbMax.z and self.z + flRadius > bbMin.z
+function math.SimpleSplineRemapValClamped(num, A, B, C, D)
+	if (A == B) then
+		return num < B and C or D
+	end
+	
+	local flVal = (num - A) / (B - A)
+	
+	return C + (D - C) * math.SimpleSpline(flVal < 0 and 0 or flVal > 1 and 1 or flVal)
+end
+
+function math.RectArea2D(vA, vB, vC)
+	return (vB[1] - vA[1]) * (vC[2] - vA[2]) - (vB[2] - vA[2]) * (vC[1] - vA[1])
+end
+
+function math.GetBarycentricCoords2D(vA, vB, vC, vPoint)
+	local flInvTriArea = 1 / math.RectArea2D(vA, vB, vC)
+	
+	return Vector(math.RectArea2D(vB, vC, vPoint) * flInvTriArea,
+		math.RectArea2D(vC, vA, vPoint) * flInvTriArea,
+		math.RectArea2D(vA, vB, vPoint) * flInvTriArea)
+end
+
+function math.SignedToUnsigned(num, iBits --[[= 32]])
+	return num % 2 ^ (iBits or 32)
+end
+
+function math.UnsignedToSigned(num, iBits --[[= 32]])
+	if (iBits == nil) then
+		iBits = 32
+	end
+	
+	local iPow = 2 ^ iBits
+	num = num % iPow
+	
+	if (num < iPow / 2) then
+		return num
+	end
+	
+	return num - iPow
+end
+
+local tStringTranslate = {
+	[0] = "0", "1", "2", "3", "4", "5", "6",
+	"7", "8", "9", "a", "b", "c", "d", "e", 
+	"f", "g", "h", "i", "j", "k", "l", "m",
+	"n", "o", "p", "q", "r", "s", "t", "u", 
+	"v", "w", "x", "y", "z"
+}
+
+local iMaxBase = #tStringTranslate + 1
+local tStringTranslateCaps = {}
+
+for i = 0, iMaxBase - 1 do
+	tStringTranslateCaps[i] = tStringTranslate[i]:upper()
+end
+
+local sBaseError = "number between 2 and " .. iMaxBase .. " expected, got "
+
+function math.ToBaseString(num, iBase, bCaps --[[= false]])
+	-- Make sure we're dealing with positive integers
+	assert_integer(num, 1)
+	assert_customarg(num >= 0, "number is not positive", 1)
+	assert_integer(num, 2)
+	
+	-- Don't allow for an infinite loop or out-of-range table accesses
+	assert_customarg(iBase >= 2 and iBase <= iMaxBase, sBaseError .. iBase, 2)
+	
+	local iPower = 1
+	local iTestBase = iBase
+	
+	while (iTestBase < num) do
+		iPower = iPower + 1
+		iTestBase = iTestBase * iBase
+	end
+	
+	local sRet = ""
+	local tbl = bCaps and tStringTranslateCaps or tStringTranslate
+	
+	for i = iPower, 1, -1 do
+		iTestBase = iTestBase / iBase
+		
+		local iDiv = floor(num / iTestBase)
+		num = num - iDiv * iTestBase
+		sRet = sRet .. tbl[iPow]
+	end
+	
+	return sRet
 end

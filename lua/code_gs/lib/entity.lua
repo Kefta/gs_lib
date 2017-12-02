@@ -1,5 +1,3 @@
-local ENTITY = FindMetaTable("Entity")
-
 // entity capabilities
 // These are caps bits to indicate what an object's capabilities (currently used for +USE, save/restore and level transitions)
 FCAP_MUST_SPAWN = 0x00000001		// Spawn after restore
@@ -33,6 +31,27 @@ SF_BREAK_NO_BULLET_PENETRATION = 0x0800  // don't allow bullets to penetrate
 SF_PUSH_BREAKABLE = 0x0080
 SF_PUSH_NO_USE = 0x0100	// player cannot +use pickup this ent
 
+SF_RAGDOLLPROP_DEBRIS = 0x0004
+SF_RAGDOLLPROP_USE_LRU_RETIREMENT = 0x1000
+SF_RAGDOLLPROP_ALLOW_DISSOLVE = 0x2000 // Allow this prop to be dissolved
+SF_RAGDOLLPROP_MOTIONDISABLED = 0x4000
+SF_RAGDOLLPROP_ALLOW_STRETCH = 0x8000
+SF_RAGDOLLPROP_STARTASLEEP = 0x10000
+
+// Physbox Spawnflags. Start at 0x01000 to avoid collision with CBreakable's
+SF_PHYSBOX_ASLEEP = 0x01000
+SF_PHYSBOX_IGNOREUSE = 0x02000
+SF_PHYSBOX_DEBRIS = 0x04000
+--SF_PHYSBOX_MOTIONDISABLED = 0x08000
+SF_PHYSBOX_USEPREFERRED = 0x10000
+SF_PHYSBOX_ENABLE_ON_PHYSCANNON = 0x20000
+SF_PHYSBOX_NO_ROTORWASH_PUSH = 0x40000 // The rotorwash doesn't push these
+SF_PHYSBOX_ENABLE_PICKUP_OUTPUT = 0x80000
+SF_PHYSBOX_ALWAYS_PICK_UP = 0x100000 // Physcannon can always pick this up, no matter what mass or constraints may apply.
+--SF_PHYSBOX_NEVER_PICK_UP = 0x200000 // Physcannon will never be able to pick this up.
+SF_PHYSBOX_NEVER_PUNT = 0x400000 // Physcannon will never be able to punt this object.
+SF_PHYSBOX_PREVENT_PLAYER_TOUCH_ENABLE = 0x800000 // If set, the player will not cause the object to enable its motion when bumped into
+
 -- Effects
 FX_WATER_IN_SLIME = 0x1
 
@@ -48,7 +67,49 @@ TE_EXPLFLAG_NOFIREBALLSMOKE = 0x80	// do not draw smoke with the fireball
 
 MUZZLEFLASH_FIRSTPERSON = 0x100
 
-ENTITY.LocalEyeAngles = ENTITY.EyeAngles
+-- FIXME: Model scale breaking with collision and movement up slopes
+-- Hitbox renderer
+function gs.DebugModelBounds(pEntity)
+	local vModelMin, vModelMax = pEntity:GetModelBounds()
+	local vRenderMin, vRenderMax = pEntity:GetModelRenderBounds()
+	local vCollisionMin, vCollisionMax = pEntity:GetCollisionBounds()
+	local sMessage = "Model scale:\t" .. pEntity:GetModelScale()
+		.. "\nModel mins:\t" .. tostring(vModelMin)
+		.. "\nModel maxs:\t" .. tostring(vModelMax)
+		.. "\nModel render mins:\t" .. tostring(vRenderMin)
+		.. "\nModel render maxs:\t" .. tostring(vRenderMax)
+		.. "\nCollision mins:\t" .. tostring(vCollisionMin)
+		.. "\nCollision maxs:\t" .. tostring(vCollisionMax)
+		.. "\nOBBMins:\t" .. tostring(pEntity:OBBMins())
+		.. "\nOBBMaxs:\t" .. tostring(pEntity:OBBMaxs())
+	
+	if (pEntity:IsPlayer()) then
+		local vHullMin, vHullMax = pEntity:GetHull()
+		local vDuckHullMin, vDuckHullMax = pEntity:GetHullDuck()
+		sMessage = sMessage
+			.. "\nHull mins:\t" .. tostring(vHullMin)
+			.. "\nHull maxs:\t" .. tostring(vHullMax)
+			.. "\nDuck hull mins:\t" .. tostring(vDuckHullMin)
+			.. "\nDuck hull maxs:\t" .. tostring(vDuckHullMax)
+	end
+	
+	if (CLIENT) then
+		local vRenderMins, vRenderMaxs = pEntity:GetRenderBounds()
+		sMessage = sMessage
+			.. "\nRender mins:\t" .. tostring(vRenderMins)
+			.. "\nRender maxs:\t" .. tostring(vRenderMaxs)
+	end
+	
+	return sMessage
+end
+
+local ENTITY = FindMetaTable("Entity")
+
+function ENTITY:GetSaveValue(sKey)
+	return self:GetSaveTable()[sKey]
+end
+
+ENTITY.LocalEyeAngles = ENTITY.EyeAngles -- FIXME
 
 function ENTITY:ApplyAbsVelocityImpulse(vImpulse)
 	if (vImpulse ~= vector_origin) then
@@ -103,56 +164,72 @@ function ENTITY:ComputeTracerStartPosition(vSrc, iAttachment)
 	return self:EyePos()
 end
 
-ENTITY.GetHitBoxSet = ENTITY.GetHitboxSet -- ONLY hitbox method with lower-case b
+--ENTITY.GetHitBoxSet = ENTITY.GetHitboxSet -- ONLY hitbox method with lower-case b
 
-function ENTITY:DrawHitBoxes(flDuration, bMonoColored)
-	local iSet = self:GetHitBoxSet()
+-- BodyGroup methods with lowercase g's
+--ENTITY.GetBodyGroup = ENTITY.GetBodygroup
+--ENTITY.SetBodyGroup = ENTITY.SetBodygroup
+--ENTITY.GetBodyGroupCount = ENTITY.GetBodygroupCount
+--ENTITY.GetBodyGroupName = ENTITY.GetBodygroupName
+
+-- FIXME: Make debugoverlay display transparent
+function ENTITY:DrawHitBoxes(flDuration --[[= 0]])
+	local iSet = self:GetHitboxSet()
 	
-	if (iSet) then
-		flDuration = flDuration or 0
+	if (iSet ~= nil) then
+		if (flDuration == nil) then
+			flDuration = 0
+		end
 		
 		for iGroup = 0, self:GetHitBoxGroupCount() - 1 do
 			for iHitBox = 0, self:GetHitBoxCount(iGroup) - 1 do
-				local vPos, ang = self:GetBonePosition(self:GetHitBoxBone(iHitBox, iGroup))
+				local vPos, aRot = self:GetBonePosition(self:GetHitBoxBone(iHitBox, iGroup))
 				local vMins, vMaxs = self:GetHitBoxBounds(iHitBox, iGroup)
-				debugoverlay.BoxAngles(vPos, vMins, vMaxs, ang, flDuration, bMonoColored and color_white or color_debug)
+				debugoverlay.BoxAngles(vPos, vMins, vMaxs, aRot, flDuration, color_debug)
 			end
 		end
 	end
 end
 
-function ENTITY:DrawRawSkeleton(tBoneToWorld, flBoneMask, flDuration, bMonoColored, bNoDepthTest)
+-- Table arg should start from 0!
+-- FIXME: Add back colours
+-- FIXME: Add spheres at the bone position
+function ENTITY:DrawRawSkeleton(tBoneToWorld, nBoneMask --[[= 0]], flDuration --[[= 0]], bNoDepthTest --[[= false]])
 	local iBoneCount = self:GetBoneCount()
 	
 	if (iBoneCount) then
-		flDuration = flDuration or 0
+		if (not flDuration) then
+			flDuration = 0
+		end
+		
+		local bNoMask = nBoneMask == nil or nBoneMask == 0		
 		
 		for iBone = 0, iBoneCount - 1 do
-			if (self:BoneHasFlag(iBone, flBoneMask)) then
+			if (bNoMask or self:BoneHasFlag(iBone, nBoneMask)) then
 				local iBoneParent = self:GetBoneParent(iBone)
 				
 				if (iBoneParent ~= -1) then
-					debugoverlay.Line(tBoneToWorld[iBone + 1]:GetColumnVector(4), tBoneToWorld[iBoneParent + 1]:GetColumnVector(4), flDuration, bMonoColored and color_white or color_debug, bNoDepthTest)
+					debugoverlay.Line(tBoneToWorld[iBone]:GetColumnVector(4), tBoneToWorld[iBoneParent]:GetColumnVector(4), flDuration, color_debug, bNoDepthTest)
 				end
 			end
 		end
 	end
 end
 
-function ENTITY:FollowEntity(pBaseEntity, bBoneMerge)
-	if (pBaseEntity == NULL) then
-		self:StopFollowingEntity()
-	else
+function ENTITY:FollowEntity(pBaseEntity, bBoneMerge --[[= true]])
+	if (pBaseEntity:IsValid()) then
 		self:SetParent(pBaseEntity)
 		self:SetMoveType(MOVETYPE_NONE)
 		
-		if (bBoneMerge) then
+		if (bBoneMerge == nil or bBoneMerge == true) then
 			self:AddEffects(EF_BONEMERGE)
 		end
 		
 		self:AddSolidFlags(FSOLID_NOT_SOLID)
 		self:SetLocalPos(vector_origin)
 		self:SetLocalAngles(angle_zero)
+	else
+		self:StopFollowingEntity()
 	end
 end
 
@@ -160,8 +237,8 @@ function ENTITY:GetFollowedEntity()
 	return self:GetMoveParent()
 end
 
-function ENTITY:FollowingEntity(bIgnoreBoneMerge)
-	return (bIgnoreBoneMerge or self:IsEffectActive(EF_BONEMERGE)) and self:GetMoveType() == MOVETYPE_NONE and self:GetMoveParent():IsValid()
+function ENTITY:FollowingEntity(bIgnoreBoneMerge --[[= true]])
+	return (bIgnoreBoneMerge == nil or bIgnoreBoneMerge == true or self:IsEffectActive(EF_BONEMERGE)) and self:GetMoveType() == MOVETYPE_NONE and self:GetMoveParent():IsValid()
 end
 
 function ENTITY:StopFollowingEntity()
@@ -183,14 +260,14 @@ function ENTITY:GetRootMoveParent()
 	return pEntity
 end
 
-function ENTITY:BoundsDefinedInEntitySpace()
-	if (self:SolidFlagSet(FSOLID_FORCE_WORLD_ALIGNED)) then
+function ENTITY:IsBoundsDefinedInEntitySpace()
+	if (self:IsSolidFlagSet(FSOLID_FORCE_WORLD_ALIGNED)) then
 		return false
 	end
 	
 	local iSolidType = self:GetSolid()
 	
-	return iSolidType ~= SOLID_BBOX and iSolidType ~= SOLID_NONE
+	return not (iSolidType == SOLID_BBOX or iSolidType == SOLID_NONE)
 end
 
 function ENTITY:ClearEffects()
@@ -203,7 +280,7 @@ function ENTITY:SetEffects(iEffects)
 		self:AddEffects(EF_NOINTERP)
 	end
 	
-	self:SetSaveValue("effects", iEffects)
+	return self:SetSaveValue("effects", iEffects)
 end
 
 function ENTITY:ClearFlags()
@@ -220,7 +297,7 @@ function ENTITY:ClearSolidFlags()
 	self:RemoveSolidFlags(self:GetSolidFlags())
 end
 
-function ENTITY:SolidFlagSet(iFlag)
+function ENTITY:IsSolidFlagSet(iFlag)
 	return bit.band(self:GetSolidFlags(), iFlag) ~= 0
 end
 
@@ -248,7 +325,7 @@ function ENTITY:_GetVelocity()
 		return self:_GetAbsVelocity()
 	end
 	
-	-- https://github.com/Facepunch/garrysmod-requests/issues/691
+	-- FIXME: https://github.com/Facepunch/garrysmod-requests/issues/691
 	return self:_GetAbsVelocity()
 	
 	--[[// Build a rotation matrix from NPC orientation
@@ -280,12 +357,12 @@ function ENTITY:IsBSPModel()
 	return self:GetSolid() == SOLID_BSP -- or self:GetSolid() == SOLID_VPHYSICS
 end
 
-function ENTITY:SolidFlagSet(iFlag)
+function ENTITY:IsSolidFlagSet(iFlag)
 	return bit.band(self:GetSolidFlags(), iFlag) ~= 0
 end
 
 function ENTITY:Standable()
-	if (self:SolidFlagSet(FSOLID_NOT_STANDABLE)) then
+	if (self:IsSolidFlagSet(FSOLID_NOT_STANDABLE)) then
 		return false
 	end
 	
@@ -361,41 +438,41 @@ end
 function ENTITY:PhysicsPushEntity(vPush)
 	local tr = self:PhysicsCheckSweep(self:GetPos(), vPush)
 	
-	if (tr.Fraction ~= 0) then
+	if (tr.Hit) then
 		self:SetPos(tr.HitPos)
 	end
 	
-	local pEntity = tr.Entity
+	--[[local pEntity = tr.Entity
 	
-	if (tr.Entity:IsValid()) then
+	if (pEntity:IsValid()) then
 		// If either of the entities is flagged to be deleted, 
 		//  don't call the touch functions
 		if (not (self:IsFlagSet(FL_KILLME) or pEntity:IsFlagSet(FL_KILLME))) then
 			self.m_trTouch = tr
 			self.m_bTouched = true
 		end
-	end
+	end]]
 	
 	return tr
 end
 
 function ENTITY:PhysicsClipVelocity(vIn, vNormal, flBounce)
-	local flAngle = vNormal.z
-	local vRet = vIn - vNormal * vIn:Dot(vNormal) * flBounce
-	local x = vRet.x
-	local y = vRet.y
-	local z = vRet.z
+	local flAngle = vNormal[3]
+	local vRet = vIn - vNormal * (vIn:Dot(vNormal) * flBounce) -- Parenthesis around float ops means less vector objects being created
+	local x = vRet[1]
+	local y = vRet[2]
+	local z = vRet[3]
 	
 	if (x > -0.1 and x < 0.1) then
-		vRet.x = 0
+		vRet[1] = 0
 	end
 	
 	if (y > -0.1 and y < 0.1) then
-		vRet.y = 0
+		vRet[2] = 0
 	end
 	
 	if (z > -0.1 and z < 0.1) then
-		vRet.z = 0
+		vRet[3] = 0
 	end
 	
 	return vRet
@@ -404,9 +481,9 @@ end
 function ENTITY:CollisionToNormalizedSpace(vIn)
 	local vMins = self:OBBMins()
 	local vSize = self:OBBSize()
-	return Vector(vSize.x ~= 0 and (vIn.x - vMins.x) / vSize.x or 0.5,
-		vSize.y ~= 0 and (vIn.y - vMins.y) / vSize.y or 0.5,
-		vSize.z ~= 0 and (vIn.z - vMins.z) / vSize.z or 0.5)
+	return Vector(vSize[1] == 0 and 0.5 or (vIn[1] - vMins[1]) / vSize[1],
+		vSize[2] == 0 and 0.5 or (vIn[2] - vMins[2]) / vSize[2],
+		vSize[3] == 0 and 0.5 or (vIn[3] - vMins[3]) / vSize[3])
 end
 
 function ENTITY:NormalizedToCollisionSpace(vIn)
@@ -416,58 +493,122 @@ end
 function ENTITY:CollisionToWorldSpace(vIn)
 	// Makes sure we don't re-use the same temp twice
 	if (not self:IsBoundsDefinedInEntitySpace() or self:GetAngles() == angle_zero) then
-		return vIn + self:GetPos()
+		local vRet = self:GetPos()
+		vRet:Add(vIn)
+		
+		return vRet
 	end
 	
 	return vIn:Transform(self:CollisionToWorldTransform())
 end
 
 function ENTITY:CollisionToWorldTransform()
-	if (self:BoundsDefinedInEntitySpace()) then
-		--return self:EntityToWorldTransform() FIXME
+	if (self:IsBoundsDefinedInEntitySpace()) then
+		return self:EntityToWorldTransform()
 	end
 	
-	return MatrixIdentity():SetColumnVector(4, self:GetPos())
+	return self:GetPos():GetTranslationMatrix()
+end
+
+function ENTITY:EntityToWorldTransform()
+	// Plop the entity->parent matrix into m_rgflCoordinateFrame
+	local vmatFrame = self:GetLocalAngles():Matrix(self:GetLocalPos())
+	local pMoveParent = self:GetMoveParent()
+		
+	if (pMoveParent:IsValid()) then
+		vmatFrame = self:GetParentToWorldTransform():ConcatTransforms(vmatFrame)
+	end
+	
+	-- Call CalcAbsolutePosition internally
+	self:GetPos()
+	
+	return vmatFrame
+end
+
+function ENTITY:GetParentToWorldTransform()
+	local pMoveParent = self:GetMoveParent()
+	
+	if (pMoveParent:IsValid()) then
+		local iAttachment = self:GetParentAttachment()
+		
+		if (iAttachment == 0) then
+			return pMoveParent:EntityToWorldTransform()
+		end
+		
+		local tAttachment = pMoveParent:GetAttachment(iAttachment)
+		
+		return tAttachment.Ang:Matrix(tAttachment.Pos)
+	end
+	
+	return Matrix()
 end
 
 function ENTITY:NormalizedToWorldSpace(vIn)
 	return self:CollisionToWorldSpace(self:NormalizedToCollisionSpace(vIn))
 end
 
-function ENTITY:OBBSize()
-	return self:OBBMaxs() - self:OBBMins()
+function ENTITY:CalcNearestPoint(vWorld)
+	// Calculate physics force
+	local vLocalPoint = self:WorldToCollisionSpace(vPoint)
+	
+	return self:CollisionToWorldSpace(vLocalPoint:CalcClosestPointOnAABB(self:OBBMins(), self:OBBMaxs()))
 end
 
-local vDefaultDrop = Vector(0, 0, 256)
-
-function ENTITY:DropToFloor(iMask, pIgnore, iRange --[[= 256]])
-	// Assume no ground
-	self:SetGroundEntity(NULL)
+function ENTITY:CalcDistanceFromPoint(vPoint)
+	// Calculate physics force
+	local vLocalPoint = self:WorldToCollisionSpace(vPoint)
 	
+	return vLocalPoint:Distance(vLocalPoint:CalcClosestPointOnAABB(self:OBBMins(), self:OBBMaxs()))
+end
+
+function ENTITY:WorldToCollisionSpace(vWorld)
+	if (not self:IsBoundsDefinedInEntitySpace() or self:GetAngles() == angle_zero) then
+		local vRet = self:GetPos()
+		vRet:Mul(-1)
+		vRet:Add(vWorld)
+		
+		return vRet
+	end
+	
+	return vWorld:ITransform(self:CollisionToWorldTransform())
+end
+
+function ENTITY:OBBSize()
+	local vRet = self:OBBMaxs()
+	vRet:Sub(self:OBBMins())
+	
+	return vRet
+end
+
+function ENTITY:DropToGround(iMask --[[= MASK_SOLID]], iRange --[[= 256]], pIgnore --[[= NULL]])	
 	local vPos = self:GetPos()
-	local trace = util.TraceEntity({
+	local vEnd = Vector(0, 0, -(iRange or 256))
+	vEnd:Add(vPos)
+	
+	local tr = util.TraceEntity({
 		start = vPos,
-		endpos = vPos - (iRange and Vector(0, 0, iRange) or vDefaultDrop),
+		endpos = vEnd,
 		mask = iMask or MASK_SOLID,
-		filter = pIgnore or self,
+		filter = {self, pIgnore},
 		collisiongroup = self:GetCollisionGroup()
 	}, self)
 	
 	-- Already on ground 
-	if (trace.AllSolid) then
+	if (tr.AllSolid) then
 		return -1
 	end
 	
 	-- No floor in range
-	if (trace.Fraction == 1) then
-		return 0
+	if (tr.Hit) then
+		self:SetPos(tr.HitPos)
+		self:SetGroundEntity(tr.Entity)
+		
+		-- New floor
+		return 1
 	end
 	
-	self:SetPos(trace.HitPos)
-	self:SetGroundEntity(trace.Entity)
-	
-	-- New floor
-	return 1
+	-- No floor in range
+	return 0
 end
 
 function ENTITY:PhysicsToss()
@@ -478,31 +619,30 @@ function ENTITY:PhysicsToss()
 	local vAbsVelocity = self:_GetAbsVelocity()
 	
 	// Moving upward, off the ground, or  resting on a client/monster, remove FL_ONGROUND
-	if (vAbsVelocity.z > 0) then
+	if (vAbsVelocity[3] > 0) then
 		self:SetGroundEntity(NULL)
 	else
 		local pGroundEntity = self:GetGroundEntity()
 		
-		if (pGroundEntity == NULL or not pGroundEntity:Standable()) then
+		-- FIXME: Check
+		if (not (pGroundEntity:IsValid() and pGroundEntity:Standable())) then
 			self:SetGroundEntity(NULL)
 		end
 	end
 	
 	local vBaseVelocity = self:_GetBaseVelocity()
-	local bAngleVelSet = false
-	local aLocalVelocity
+	local bResetAngles = true
 	
 	// Check to see if the entity is on the ground at rest
 	if (self:IsFlagSet(FL_ONGROUND) and vAbsVelocity == vector_origin) then
 		// Clear rotation if not moving (even if on a conveyor)
 		self:SetLocalAngularVelocity(angle_zero)
-		aLocalVelocity = angle_zero
 		
 		if (vBaseVelocity == vector_origin) then
 			return
 		end
 		
-		bAngleVelSet = true
+		bResetAngles = false
 	end
 	
 	-- Let the engine's physics manager handle this
@@ -516,7 +656,9 @@ function ENTITY:PhysicsToss()
 	local vMove = self:IsFlagSet(FL_FLY) and (vAbsVelocity + vBaseVelocity) * iFrameTime or self:PhysicsAddGravityMove()
 	
 	// move angles
-	self:SetLocalAngles(self:GetLocalAngles() + (aLocalVelocity or self:GetLocalAngularVelocity()) * iFrameTime)
+	if (bResetAngles) then
+		self:SetLocalAngles(self:GetLocalAngles() + (aLocalVelocity or self:GetLocalAngularVelocity()) * iFrameTime)
+	end
 	
 	// move origin
 	local tr = self:PhysicsPushEntity(vMove)
@@ -533,12 +675,12 @@ function ENTITY:PhysicsToss()
 		// UNDONE: does this entity needs to be removed?
 		self:_SetAbsVelocity(vector_origin)
 		
-		if (not bAngleVelSet) then
+		if (bResetAngles) then
 			self:SetLocalAngularVelocity(angle_zero)
 		end
 	else
-		if (tr.Fraction ~= 1) then
-			self:PerformFlyCollisionResolution(tr, vMove)
+		if (tr.Hit) then
+			self:PerformFlyCollisionResolution(tr)
 		end
 		
 		// check for in water
@@ -608,17 +750,17 @@ function ENTITY:PhysicsAddGravityMove()
 	local vMove = (vAbsVelocity + vBaseVelocity) * iFrameTime
 	
 	if (self:IsFlagSet(FL_ONGROUND)) then
-		vMove.z = vBaseVelocity.z * iFrameTime
+		vMove[3] = vBaseVelocity[3] * iFrameTime
 	else
-		local flAbsZ = vAbsVelocity.z
+		local flAbsZ = vAbsVelocity[3]
 		
 		// linear acceleration due to gravity
 		local flNewZ = flAbsZ - self:GetActualGravity() * iFrameTime
-		vMove.z = ((flAbsZ + flNewZ) / 2 + vBaseVelocity.z) * iFrameTime
+		vMove[3] = ((flAbsZ + flNewZ) / 2 + vBaseVelocity[3]) * iFrameTime
 		
-		vBaseVelocity.z = 0
+		vBaseVelocity[3] = 0
 		self:_SetBaseVelocity(vBaseVelocity)
-		vAbsVelocity.z = flNewZ
+		vAbsVelocity[3] = flNewZ
 		self:_SetAbsVelocity(vAbsVelocity)
 		
 		--PhysicsCheckVelocity();
@@ -627,58 +769,34 @@ function ENTITY:PhysicsAddGravityMove()
 	return vMove
 end
 
-local sv_gravity = GetConVar("sv_gravity")
-
-function ENTITY:GetActualGravity()
-	local flGravity = self:GetGravity()
-	
-	return flGravity == 0 and 1 or flGravity * sv_gravity:GetFloat()
-end
-
-function ENTITY:PhysicsPushEntity(vPush)
-	local tr = self:PhysicsCheckSweep(self:GetPos(), vPush)
-	
-	if (tr.Fraction ~= 0) then
-		self:SetPos(tr.HitPos)
-	end
-	
-	local pEntity = tr.Entity
-	
-	if (tr.Entity:IsValid()) then
-		// If either of the entities is flagged to be deleted, 
-		//  don't call the touch functions
-		if (not (self:IsFlagSet(FL_KILLME) or pEntity:IsFlagSet(FL_KILLME))) then
-			self.m_trTouch = tr
-			self.m_bTouched = true
-		end
-	end
-	
-	return tr
-end
-
 function ENTITY:PerformFlyCollisionResolution(tr)
 	local iMoveCollide = self:GetMoveCollide()
 	
-	--if (iMoveCollisde == MOVECOLLIDE_FLY_CUSTOM) then
+	-- FIXME
+	if (iMoveCollide == MOVECOLLIDE_FLY_CUSTOM) then
 		self:ResolveFlyCollisionCustom(tr)
-	--[[elseif (iMoveCollide == MOVECOLLIDE_FLY_BOUNCE) then
+	else
+		error("Not implemented!")
+	end
+	
+	--[[if (iMoveCollide == MOVECOLLIDE_FLY_BOUNCE) then
 		self:ResolveFlyCollisionBounce(tr)
 	elseif (iMoveCollide == MOVECOLLIDE_FLY_SLIDE or iMoveCollide == MOVECOLLIDE_DEFAULT) then
 		// NOTE: The default fly collision state is the same as a slide (for backward capatability).
 		self:ResolveFlyCollisionSlide(tr)
-	end]]
+	end]]--
 end
 
 function ENTITY:ResolveFlyCollisionCustom(tr)
 	// Stop if on ground
-	if (tr.HitNormal.z > 0.7) then // Floor
+	if (tr.HitNormal[3] > 0.7) then // Floor
 		// Get the total velocity (player + conveyors, etc.)
 		local vAbsVelocity = self:_GetAbsVelocity()
 		local vVelocity = vAbsVelocity + self:_GetBaseVelocity()
 		
 		// Are we on the ground?
-		if (vVelocity.z < self:GetActualGravity() * FrameTime()) then
-			vAbsVelocity.z = 0
+		if (vVelocity[3] < self:GetActualGravity() * FrameTime()) then
+			vAbsVelocity[3] = 0
 			self:_SetAbsVelocity(vAbsVelocity)
 		end
 		
@@ -695,22 +813,26 @@ function ENTITY:PhysicsCheckWaterTransition()
 	local iNewCont = self:WaterType()
 	
 	// We can exit right out if we're a child... don't bother with this...
-	if (self:GetMoveParent() == NULL) then
+	if (not self:GetMoveParent():IsValid()) then
 		if (bit.band(iNewCont, MASK_WATER) ~= 0) then
 			if (iOldCont == CONTENTS_EMPTY) then
-				self:Splash()
+				if (self.Splash) then
+					self:Splash()
+				end
 				
 				// just crossed into water
 				self:EmitSound("BaseEntity.EnterWater")
 				
 				if (not self:IsEFlagSet(EFL_NO_WATER_VELOCITY_CHANGE)) then
 					local vAbsVelocity = self:GetAbsVelocity()
-					vAbsVelocity.z = vAbsVelocity.z / 2
+					vAbsVelocity[3] = vAbsVelocity[3] / 2
 					self:SetAbsVelocity(vAbsVelocity)
 				end
 			end
 		elseif (iOldCont ~= CONTENTS_EMPTY) then
-			--self:Splash() -- Splash again!
+			if (self.Splash) then
+				self:Splash() -- Splash again!
+			end
 			
 			// just crossed out of water
 			self:EmitSound("BaseEntity.ExitWater")
@@ -718,7 +840,7 @@ function ENTITY:PhysicsCheckWaterTransition()
 	end
 end
 
-local vNormalizeSpace = Vector(0.5, 0.5, 0)
+local vNormalizeSpace = Vector(0.5, 0.5)
 
 function ENTITY:UpdateWaterState()
 	// FIXME: This computation is nonsensical for rigid child attachments
@@ -739,7 +861,7 @@ function ENTITY:UpdateWaterState()
 			self:SetWaterLevel(3)
 		else
 			// Check the exact center of the box
-			vPoint.z = self:WorldSpaceCenter().z
+			vPoint[3] = self:WorldSpaceCenter()[3]
 			
 			local iCont = util.PointContents(vPoint)
 			
@@ -747,7 +869,7 @@ function ENTITY:UpdateWaterState()
 				self:SetWaterLevel(1)
 			else
 				// Now check where the eyes are...
-				vPoint.z = self:EyePos().z
+				vPoint[3] = self:EyePos()[3]
 				local iCont = util.PointContents(vPoint)
 				
 				if (bit.band(iCont, MASK_WATER) == 0) then
@@ -761,24 +883,97 @@ function ENTITY:UpdateWaterState()
 end
 
 function ENTITY:PhysicsClipVelocity(vIn, vNormal, flBounce)
-	local flAngle = vNormal.z
+	local flAngle = vNormal[3]
 	local vRet = vIn - vNormal * vIn:Dot(vNormal) * flBounce
-	local x = vRet.x
-	local y = vRet.y
-	local z = vRet.z
+	local x = vRet[1]
+	local y = vRet[2]
+	local z = vRet[3]
 	
 	if (x > -0.1 and x < 0.1) then
-		vRet.x = 0
+		vRet[1] = 0
 	end
 	
 	if (y > -0.1 and y < 0.1) then
-		vRet.y = 0
+		vRet[2] = 0
 	end
 	
 	if (z > -0.1 and z < 0.1) then
-		vRet.z = 0
+		vRet[3] = 0
 	end
 	
 	return vRet
 end
 
+-- FIXME: Add NPC exceptions
+function ENTITY:CanBecomeRagdoll()
+	return not (self:SelectWeightedSequence(ACT_DIERAGDOLL) == -1 or self:IsFlagSet(FL_TRANSRAGDOLL))
+end
+
+function ENTITY:GetBody()
+	return self:GetSaveValue("m_nBody") -- FIXME: Check if m_nBody exists in server savetable
+end
+
+function ENTITY:SetBody(nBody)
+	return self:SetSaveValue("m_nBody", nBody)
+end
+
+function ENTITY:CopyVisualData(pSource, bNoModelUpdate --[[= false]])
+	local sModel = pSource:GetModel()
+	
+	if (not bNoModelUpdate) then
+		self:SetModel(sModel)
+	end
+	
+	self:SetMaterial(pSource:GetMaterial())
+	self:SetEffects(bit.bor(pSource:GetEffects(), EF_NOINTERP))
+	self:SetSequence(pSource:GetSequence())
+	self:SetCycle(pSource:GetCycle())
+	self:SetAnimTime(pSource:GetAnimTime())
+	self:SetPlaybackRate(pSource:GetPlaybackRate())
+	self:SetBody(pSource:GetBody())
+	self:SetRenderFX(pSource:GetRenderFX())
+	self:SetColor(pSource:GetColor())
+	
+	for i = 0, self:GetNumBodyGroups() - 1 do
+		self:SetBodygroup(i, pSource:GetBodygroup(i))
+	end
+	
+	for i = 0, self:GetNumPoseParameters() - 1 do
+		local sName = self:GetPoseParameterName(i)
+		self:SetPoseParameter(sName, pSource:GetPoseParameter(sName))
+	end
+	
+	self:SetSkin(pSource:GetSkin())
+	--self.GetPlayerColor = pSource.GetPlayerColor -- FIXME
+end
+
+function ENTITY:AddSpawnFlags(nFlags)
+	return self:SetSaveValue("m_spawnflags", bit.bor(self:GetSaveValue("m_spawnflags"), nFlags)) -- FIXME: "spawnflags"
+end
+
+function ENTITY:ClearSpawnFlags()
+	return self:SetSaveValue("m_spawnflags", 0)
+end
+
+function ENTITY:RemoveSpawnFlags(nFlags)
+	return self:SetSaveValue("m_spawnflags", bit.band(self:GetSaveValue("m_spawnflags"), bit.bnot(nFlags)))
+end
+
+-- FIXME
+function ENTITY:IsBreakable()
+	local sClass = self:GetClass()
+	
+	return sClass == "func_breakable" or sClass == "func_breakable_surf" or sClass == "func_physbox"
+end
+
+function ENTITY:IsPhysBox()
+	return self:GetClass() == "func_physbox"
+end
+
+function ENTITY:IsViewModel()
+	return self:IsValid() and self:ViewModelIndex() ~= nil
+end
+
+function ENTITY:SetViewModelIndex(iIndex)
+	return self:SetSaveValue("m_nViewModelIndex", iIndex)
+end

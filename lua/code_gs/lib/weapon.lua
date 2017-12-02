@@ -1,10 +1,35 @@
 local WEAPON = FindMetaTable("Weapon")
 
+function WEAPON:GetPrimaryAmmoName()
+	return game.GetAmmoName(self:GetPrimaryAmmoType())
+end
+
+function WEAPON:GetSecondaryAmmoName()
+	return game.GetAmmoName(self:GetSecondaryAmmoType())
+end
+
+-- FIXME
+function WEAPON:GetDefaultClip1()
+	return self:IsScripted() and self.Primary.DefaultClip or -1
+end
+
+function WEAPON:GetDefaultClip2()
+	return self:IsScripted() and self.Secondary.DefaultClip -1
+end
+
 -- https://github.com/Facepunch/garrysmod-issues/issues/2543
 function WEAPON:GetActivityBySequence(iIndex)
-	local pViewModel = self:GetOwner():GetViewModel(iIndex)
+	local pOwner = self:GetOwner()
 	
-	return pViewModel == NULL and ACT_INVALID or pViewModel:GetSequenceActivity(pViewModel:GetSequence())
+	if (pOwner:IsValid()) then
+		local pViewModel = pOwner:GetViewModel(iIndex)
+		
+		if (pViewModel:IsValid()) then
+			return pViewModel:GetSequenceActivity(pViewModel:GetSequence())
+		end
+	end
+	
+	return ACT_INVALID
 end
 
 -- https://github.com/Facepunch/garrysmod-requests/issues/703
@@ -34,12 +59,12 @@ function WEAPON:HasPrimaryAmmo()
 	// Otherwise, I have ammo if I have some in my ammo counts
 	local pPlayer = self:GetOwner()
 	
-	if (pPlayer == NULL) then
-		// No owner, so return how much primary ammo I have along with me
-		if (self:GetPrimaryAmmoCount() > 0) then
-			return true
-		end
-	elseif (pPlayer:GetAmmoCount(self:GetPrimaryAmmoType()) > 0) then
+	if (pPlayer:IsValid()) then
+		return pPlayer:GetAmmoCount(self:GetPrimaryAmmoType()) > 0
+	end
+	
+	// No owner, so return how much primary ammo I have along with me
+	if (self:GetPrimaryAmmoCount() > 0) then
 		return true
 	end
 	
@@ -54,22 +79,20 @@ function WEAPON:HasSecondaryAmmo()
 	if (self:Clip2() ~= 0) then
 		return true
 	end
-		
+	
 	local pPlayer = self:GetOwner()
 	
-	if (pPlayer == NULL) then
-		// No owner, so return how much secondary ammo I have along with me
-		if (self:GetSecondaryAmmoCount() > 0) then
-			return true
-		end
-	elseif (pPlayer:GetAmmoCount(self:GetSecondaryAmmoType()) > 0) then
+	if (pPlayer:IsValid()) then
+		return pPlayer:GetAmmoCount(self:GetSecondaryAmmoType()) > 0
+	end
+	
+	if (self:GetSecondaryAmmoCount() > 0) then
 		return true
 	end
 	
 	return false
 end
 
--- FIXME: Move
 function WEAPON:IsActiveWeapon()
 	local pPlayer = self:GetOwner()
 	
@@ -79,21 +102,19 @@ end
 function WEAPON:IsViewModelSequenceFinished(iIndex)
 	local pPlayer = self:GetOwner()
 	
-	if (pPlayer == NULL) then
-		return false
-	end
-	
-	local vm = pPlayer:GetViewModel(iIndex)
-	
-	if (vm == NULL) then
-		return false
-	end
-	
-	local iActivity = self:GetActivityBySequence()
-	
-	// These are not valid activities and always complete immediately
-	if (iActivity == ACT_RESET or iActivity == ACT_INVALID or vm:GetInternalVariable("m_bSequenceFinished")) then
-		return true
+	if (pPlayer:IsValid()) then
+		local pViewModel = pPlayer:GetViewModel(iIndex)
+		
+		if (pViewModel:IsValid()) then
+			if (pViewModel:GetSaveValue("m_bSequenceFinished")) then
+				return true
+			end
+			
+			local iActivity = self:GetActivityBySequence(iIndex)
+			
+			// These are not valid activities and always complete immediately
+			return iActivity == ACT_INVALID or iActivity == ACT_RESET
+		end
 	end
 	
 	-- https://github.com/Facepunch/garrysmod-requests/issues/704

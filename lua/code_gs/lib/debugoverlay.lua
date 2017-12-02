@@ -14,7 +14,7 @@ function debugoverlay.EntityText(pEntity, iOffset, sText, flDuration, col)
 	debugoverlay.EntityTextAtPosition(pEntity:GetPos(), iOffset, sText, flDuration, col)
 end
 
-function debugoverlay.Cross3D(vPos, flSize, flDuration, col, bNoDepthTest)
+function debugoverlay.Cross3D(vPos, flSize, flDuration, col, bNoDepthTest --[[= false]])
 	local vX = Vector(flSize, 0, 0)
 	local vY = Vector(0, flSize, 0)
 	local vZ = Vector(0, 0, flSize)
@@ -27,23 +27,23 @@ end
 function debugoverlay.Cross3DHull(vPos, vMins, vMaxs, flDuration, col, bNoDepthTest)
 	local vStart = vMins + vPos
 	local vEnd = vMaxs + vPos
-	local x = vMaxs.x - vMins.x
-	local y = vMaxs.y - vMins.y
+	local x = vMaxs[1] - vMins[1]
+	local y = vMaxs[2] - vMins[2]
 	
 	debugoverlay.Line(vStart, vEnd, flDuration, col, bNoDepthTest)
 	
-	vStart.x = vStart.x + x
-	vEnd.x = vEnd.x - x
+	vStart[1] = vStart[1] + x
+	vEnd[1] = vEnd[1] - x
 	
 	debugoverlay.Line(vStart, vEnd, flDuration, col, bNoDepthTest)
 	
-	vStart.y = vStart.y + y
-	vEnd.y = vEnd.y - y
+	vStart[2] = vStart[2] + y
+	vEnd[2] = vEnd[2] - y
 	
 	debugoverlay.Line(vStart, vEnd, flDuration, col, bNoDepthTest)
 	
-	vStart.x = vStart.x - x
-	vEnd.x = vEnd.x + x
+	vStart[1] = vStart[1] - x
+	vEnd[1] = vEnd[1] + x
 	
 	debugoverlay.Line(vStart, vEnd, flDuration, col, bNoDepthTest)
 end
@@ -78,7 +78,7 @@ function debugoverlay.DrawTickMarkedLine(pPlayer, vStartPos, vEndPos, flTickDist
 	
 	if (SERVER) then
 		local vBodyDir = pPlayer:GetAngles():Forward()
-		vBodyDir.z = 0
+		vBodyDir[3] = 0
 		vSideDir = vLineDir:Cross(4 * vBodyDir)
 	else
 		vSideDir = vLineDir:Cross(4 * pPlayer:LocalEyeAngles():Forward())
@@ -124,8 +124,8 @@ function debugoverlay.DrawGroundCrossHairOverlay(pPlayer, col, bNoDepthTest)
 		filter = pPlayer
 	})
 	
-	if (tr.Fraction ~= 1.0 and vector_normal:Dot(tr.HitNormal) > 0.5) then
-		tr.HitPos.z = tr.HitPos.z + 1
+	if (tr.Hit and vector_up:Dot(tr.HitNormal) > 0.5) then
+		tr.HitPos[3] = tr.HitPos[3] + 1
 		debugoverlay.Line(tr.HitPos + vector_6x_min, tr.HitPos + vector_6x_max, 0, col, bNoDepthTest)
 		debugoverlay.Line(tr.HitPos + vector_6y_min, tr.HitPos + vector_6y_max, 0, col, bNoDepthTest)
 	end
@@ -134,8 +134,9 @@ end
 function debugoverlay.HorzArrow(vStartPos, vEndPos, flWidth, flDuration, col, bNoDepthTest)
 	local vLineDir = vEndPos - vStartPos
 	vLineDir:Normalize()
+	
 	local flRadius = flWidth / 2
-	local vSideDir = vLineDir:Cross(vector_normal)
+	local vSideDir = vLineDir:Cross(vector_up)
 	
 	local v1 = vStartPos - vSideDir * flRadius
 	local v2 = vEndPos - vLineDir * flWidth - vSideDir * flRadius
@@ -215,11 +216,11 @@ function debugoverlay.CircleAngles(vPos, aOrientation, flRadius, flDuration, col
 end
 
 function debugoverlay.Circle(vPos, vX, vY, flRadius, iSegments, flDuration, col, bNoDepthTest)
-	if (not iSegments) then
+	if (iSegments == nil) then
 		iSegments = 16
 	end
 	
-	local flRadStep = math.tau / iSegments
+	local flRadStep = 2*math.pi / iSegments
 
 	// Find our first position
 	// Retained for triangle fanning
@@ -245,6 +246,7 @@ function debugoverlay.Circle(vPos, vX, vY, flRadius, iSegments, flDuration, col,
 	end
 end
 
+-- FIXME: This is overriding a default function
 function debugoverlay.Sphere(vPos, aOrientation, flRadius, flDuration, col, bNoDepthTest)
 	// Setup our transform matrix
 	local vmat = aOrientation:Matrix(vPos)
