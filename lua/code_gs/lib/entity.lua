@@ -910,11 +910,17 @@ function ENTITY:CanBecomeRagdoll()
 end
 
 function ENTITY:GetBody()
-	return self:GetSaveValue("m_nBody") -- FIXME: Check if m_nBody exists in server savetable
+	local nBody = self:GetSaveValue("body")
+
+	if (nBody == nil) then
+		return 0
+	end
+
+	return nBody
 end
 
 function ENTITY:SetBody(nBody)
-	self:SetSaveValue("m_nBody", nBody)
+	self:SetSaveValue("body", nBody)
 end
 
 function ENTITY:CopyVisualData(pSource, bNoModelUpdate --[[= false]])
