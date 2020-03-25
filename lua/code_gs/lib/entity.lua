@@ -1007,10 +1007,13 @@ function ENTITY:CopyVisualData(pSource, bNoModelUpdate --[[= false]])
 		end
 	end
 	
-	local fGetPlayerColor = pSource.GetPlayerColor
-	
-	if (gs.IsType(fGetPlayerColor, TYPE_FUNCTION)) then
-		self.GetPlayerColor = fGetPlayerColor
+	-- FIXME: Somehow cache this so functions aren't created every frame
+	self.GetPlayerColor = function()
+		if (pSource:IsValid() and gs.IsType(pSource.GetPlayerColor, TYPE_FUNCTION)) then
+			return pSource:GetPlayerColor()
+		end
+		
+		return vector_origin
 	end
 end
 
