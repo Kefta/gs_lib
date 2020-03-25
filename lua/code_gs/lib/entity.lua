@@ -1003,7 +1003,7 @@ function ENTITY:CopyVisualData(pSource, bNoModelUpdate --[[= false]])
 		local fSetBodyGroup = self.SetBodygroup
 		
 		for i = 0, nBodyGroups - 1 do
-			fSetBodygroup(self, i, fGetBodyGroup(pSource, i))
+			fSetBodyGroup(self, i, fGetBodyGroup(pSource, i))
 		end
 	end
 	
