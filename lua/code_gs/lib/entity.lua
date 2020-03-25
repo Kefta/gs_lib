@@ -910,56 +910,107 @@ function ENTITY:CanBecomeRagdoll()
 end
 
 function ENTITY:GetBody()
-	local nBody = self:GetSaveValue("body")
-
-	if (nBody == nil) then
-		return 0
-	end
-
-	return nBody
+	return self:GetSaveValue("body")
 end
 
 function ENTITY:SetBody(nBody)
 	self:SetSaveValue("body", nBody)
 end
 
+if (SERVER) then
+	function ENTITY:CopyPoseParameters(pSource)
+		local nCount = pSource:GetNumPoseParameters()
+		
+		if (nCount ~= nil) then
+			local fGetPoseParameterName = pSource.GetPoseParameterName
+			local fGetPoseParameter = pSource.GetPoseParameter
+			local fSetPoseParameter = self.SetPoseParameter
+			
+			for i = 0, nCount - 1 do
+				local sPose = fGetPoseParameterName(pSource, i)
+				fSetPoseParameter(self, sPose, fGetPoseParameter(pSource, sPose))
+			end
+		end
+	end
+else
+	function ENTITY:CopyPoseParameters(pSource)
+		local nCount = pSource:GetNumPoseParameters()
+		
+		if (nCount ~= nil) then
+			local fGetPoseParameterRange = pSource.GetPoseParameterRange
+			local fGetPoseParameterName = pSource.GetPoseParameterName
+			local fGetPoseParameter = pSource.GetPoseParameter
+			local fSetPoseParameter = self.SetPoseParameter
+			
+			for i = 0, nCount - 1 do
+				local flMin, flMax = fGetPoseParameterRange(pSource, i)
+				local sPose = fGetPoseParameterName(pSource, i)
+				
+				-- Remap the parameter from [0, 1] to [flMin, flMax]
+				-- Same as math.Remap(pSource:GetPoseParameter(sPose), 0, 1, flMin, flMax)
+				fSetPoseParameter(self, sPose, fGetPoseParameter(pSource, sPose) * (flMax - flMin) + flMin)
+			end
+		end
+	end
+end
+
+-- For entities that return nil where a value is expected
+local function ConditionalSet(pEntity, func, val)
+	if (val ~= nil) then
+		func(pEntity, val)
+	end
+end
+
+function ENTITY:CopyAnimationData(pSource)
+	ConditionalSet(self, self.SetSequence, pSource:GetSequence())
+	ConditionalSet(self, self.SetCycle, pSource:GetCycle())
+	ConditionalSet(self, self.SetAnimTime, pSource:GetAnimTime())
+	ConditionalSet(self, self.SetPlaybackRate, pSource:GetPlaybackRate())
+	
+	self:CopyPoseParameters(pSource)
+end
+
 function ENTITY:CopyVisualData(pSource, bNoModelUpdate --[[= false]])
-	local sModel = pSource:GetModel()
-	
 	if (not bNoModelUpdate) then
-		self:SetModel(sModel)
+		local sModel = pSource:GetModel()
+		
+		if (sModel ~= nil) then
+			self:SetModel(sModel)
+		end
 	end
 	
-	self:SetMaterial(pSource:GetMaterial())
-	self:SetEffects(bit.bor(pSource:GetEffects(), EF_NOINTERP))
-	self:SetSequence(pSource:GetSequence())
-	self:SetCycle(pSource:GetCycle())
-	self:SetAnimTime(pSource:GetAnimTime())
-	self:SetPlaybackRate(pSource:GetPlaybackRate())
-	self:SetBody(pSource:GetBody())
-	self:SetRenderFX(pSource:GetRenderFX())
+	-- CBaseEntity
 	self:SetColor(pSource:GetColor())
+	self:SetRenderFX(pSource:GetRenderFX())
+	self:SetEffects(bit.bor(pSource:GetEffects(), EF_NOINTERP)) -- Instant copy, no interpolation
 	
-	for i = 0, self:GetNumBodyGroups() - 1 do
-		self:SetBodygroup(i, pSource:GetBodygroup(i))
+	-- CBaseAnim
+	ConditionalSet(self, self.SetMaterial, pSource:GetMaterial())
+	ConditionalSet(self, self.SetBody, pSource:GetBody())
+	ConditionalSet(self, self.SetSkin, pSource:GetSkin())
+	
+	local fGetSubMaterial = pSource.GetSubMaterial
+	local fSetSubMaterial = self.SetSubMaterial
+	
+	for i = 0, 31 do
+		fSetSubMaterial(self, i, fGetSubMaterial(pSource, i))
 	end
 	
-	for i = 0, self:GetNumPoseParameters() - 1 do
-		local sName = self:GetPoseParameterName(i)
-		self:SetPoseParameter(sName, pSource:GetPoseParameter(sName))
+	local nBodyGroups = self:GetNumBodyGroups()
+	
+	if (nBodyGroups ~= nil) then
+		local fGetBodyGroup = pSource.GetBodygroup
+		local fSetBodyGroup = self.SetBodygroup
+		
+		for i = 0, nBodyGroups - 1 do
+			fSetBodygroup(self, i, fGetBodyGroup(pSource, i))
+		end
 	end
 	
-	self:SetSkin(pSource:GetSkin())
-	
-	-- FIXME: See if there's a way to transfer the function without re-binding
 	local fGetPlayerColor = pSource.GetPlayerColor
 	
 	if (gs.IsType(fGetPlayerColor, TYPE_FUNCTION)) then
-		local col = fGetPlayerColor(pSource)
-		
-		self.GetPlayerColor = function()
-			return col
-		end
+		self.GetPlayerColor = fGetPlayerColor
 	end
 end
 
@@ -977,13 +1028,17 @@ end
 
 -- FIXME
 function ENTITY:IsBreakable()
-	local sClass = self:GetClass()
+	if (self:IsValid()) then
+		local sClass = self:GetClass()
+		
+		return sClass == "func_breakable" or sClass == "func_breakable_surf" or sClass == "func_physbox"
+	end
 	
-	return sClass == "func_breakable" or sClass == "func_breakable_surf" or sClass == "func_physbox"
+	return false
 end
 
 function ENTITY:IsPhysBox()
-	return self:GetClass() == "func_physbox"
+	return self:IsValid() and self:GetClass() == "func_physbox"
 end
 
 function ENTITY:IsViewModel()
