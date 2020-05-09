@@ -1,11 +1,5 @@
 local ANGLE = FindMetaTable("Angle")
 
-function AngleRand(flMin --[[-90 pitch, -180 yaw/roll]], flMax --[[= 90 pitch, 180 yaw/roll]])
-	return Angle(math.Rand(flMin or -90, flMax or 90),
-		math.Rand(flMin or -180, flMax or 180),
-		math.Rand(flMin or -180, flMax or 180))
-end
-
 function ANGLE:ClipPunchAngleOffset(aPunch, aClip)
 	local aFinal = self + aPunch
 	local fp = aFinal[1]
@@ -97,10 +91,6 @@ function ANGLE:IsEqualTol(ang, flTol --[[= 0]])
 		and math.EqualWithTolerance(self[3], ang[3], tol)
 end
 
-function ANGLE:ToTable()
-	return {self[1], self[2], self[3]}
-end
-
 -- FIXME: Check this
 function ANGLE:Impulse()
 	return Vector(self[3], self[1], self[2])
@@ -116,22 +106,4 @@ function ANGLE:LengthSqr()
 	local r = self[3]
 	
 	return p * p + y * y + r * r
-end
-
-function ANGLE:Add(ang)
-	self[1] = self[1] + ang[1]
-	self[2] = self[2] + ang[2]
-	self[3] = self[3] + ang[3]
-end
-
-function ANGLE:Sub(ang)
-	self[1] = self[1] - ang[1]
-	self[2] = self[2] - ang[2]
-	self[3] = self[3] - ang[3]
-end
-
-function ANGLE:Mul(flMultiplier)
-	self[1] = self[1] * flMultiplier
-	self[2] = self[2] * flMultiplier
-	self[3] = self[3] * flMultiplier
 end
