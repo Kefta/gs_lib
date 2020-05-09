@@ -12,20 +12,6 @@ vector_normal = Vector(1, 1, 1)
 vector_debug_max = Vector(2, 2, 2)
 vector_debug_min = -vector_debug_max
 
-function VectorRand(flMin, flMax)
-	if (not flMin) then
-		flMin = -1
-	end
-	
-	if (not flMax) then
-		flMax = 1
-	end
-	
-	return Vector(math.Rand(flMin, flMax),
-		math.Rand(flMin, flMax),
-		math.Rand(flMin, flMax))
-end
-
 function VECTOR:NormalizeInPlace()
 	if (self == vector_origin) then
 		return 0
@@ -121,10 +107,6 @@ function VECTOR:Up(vUp --[[= Vector(0, 0, 1)]])
 	vRet:Normalize()
 	
 	return vRet
-end
-
-function VECTOR:ToTable()
-	return {self[1], self[2], self[3]}
 end
 
 // Return true of the sphere might touch the box (the sphere is actually treated
